@@ -80,7 +80,7 @@ scriptSettings.maxReincChallengeDuration = 60;
 
 // Auto Runes settings
 scriptSettings.runeCaps = [1000, 1000, 1000, 1000, 1000];
-scriptSettings.runeWeights = [1, 1, 1, 1, 3];
+scriptSettings.runeWeights = [1, 2, 1, 3, 4];
 
 // Variables, don't change manually
 let scriptVariables = {};
@@ -116,8 +116,10 @@ function scriptLogStuff() {
   
   // Logs Challenge completions
   sLog(2, "Challenge Info: " +
-  "Trans: " + player.challengecompletions.one+"/"+player.challengecompletions.two+"/"+player.challengecompletions.three+"/"+player.challengecompletions.four+"/"+player.challengecompletions.five+"  "+
-  "Reinc: " + player.challengecompletions.six+"/"+player.challengecompletions.seven+"/"+player.challengecompletions.eight+"/"+player.challengecompletions.nine+"/"+player.challengecompletions.ten);
+  "Trans: " + player.highestchallengecompletions.one+"/"+player.highestchallengecompletions.two+"/"+player.highestchallengecompletions.three+"/"+player.highestchallengecompletions.four+"/"+
+  player.highestchallengecompletions.five+"  "+
+  "Reinc: " + player.highestchallengecompletions.six+"/"+player.highestchallengecompletions.seven+"/"+player.highestchallengecompletions.eight+"/"+player.highestchallengecompletions.nine+"/"+
+  player.highestchallengecompletions.ten);
   // Logs Rune Levels, Talisman Rarity, Talisman levels
   sLog(2, "Rune Info:      " +
   "R: " + player.runelevels[0]+"/"+player.runelevels[1]+"/"+player.runelevels[2]+"/"+player.runelevels[3]+"/"+player.runelevels[4]+"   "+
@@ -125,7 +127,9 @@ function scriptLogStuff() {
   player.talismanRarity[2] + "x" + player.talismanLevels[2] + "/" +
   player.talismanRarity[3] + "x" + player.talismanLevels[3] + "/" +
   player.talismanRarity[4] + "x" + player.talismanLevels[4] + "/" +
-  player.talismanRarity[5] + "x" + player.talismanLevels[5]
+  player.talismanRarity[5] + "x" + player.talismanLevels[5] + "/" +
+  player.talismanRarity[6] + "x" + player.talismanLevels[6] + "/" +
+  player.talismanRarity[7] + "x" + player.talismanLevels[7]
   );
   
   // Logs some Cube stats
@@ -170,13 +174,13 @@ function scriptAutoGameFlow () {
   // TODO: Determine if > 60s is needed
   if (player.upgrades[70] < 1) scriptVariables.targetReincTime = 30; // If you don't have the e22 particle upgrade, reincarnate every 30s to keep max obt up to date
   else if (player.reincarnationPoints.exponent < 10000) scriptVariables.targetReincTime = 60;  // With the e22 particle upgrade but low particles, reincarnate every 60s to keep max obt fairly decent and quickly boost particles
-  else scriptVariables.targetReincTime = 600000; // Auto Reincarnation should be on and set to 4440, if not reincarnate after a long time
+  else scriptVariables.targetReincTime = 60000; // Auto Reincarnation should be on and set to 4440, if not reincarnate after a long time
   
   // Turn Ant Sacrifice back on if doing nothing
   if (scriptNoCurrentAction()) scriptSetAutoSac(true);
   
   // Handle doing challenges occasionally (before blessings)
-  if (scriptNoCurrentAction() && (!scriptVariables.ascensionBlessingRespecDone || player.challengecompletions["nine"] === 0)) {
+  if (scriptNoCurrentAction() && (!scriptVariables.ascensionBlessingRespecDone || player.challengecompletions["nine"] === 0) && player.ascensionCounter > 30) {
     // Do Reincarnation Challenges if particles have changed significantly
     if (scriptVariables.lastReincChallengeCounter + scriptSettings.flowMinTimeBetweenReincChallenges < player.ascensionCounter && scriptVariables.currentTransChallenge < 0
     && (player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts * scriptSettings.flowReincChallengePartMulti || player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts + scriptSettings.flowReincChallengePartPlus)) {
@@ -207,6 +211,42 @@ function scriptAutoGameFlow () {
     respecTalismanConfirm(8);
     scriptVariables.ascensionBlessingRespecDone = true;
     sLog(2, "Respecced Talismans to 135 for blessings");
+  }
+  
+  // Handle Ascension
+  // If target number of C10 completions is reached, ascend. This is going to be right after a challenge push, so it is not necessary to do another.
+  // Needed Shards are at 800k to match up with the push condition. The script will push until it no longer can significantly boost ants by it, then ascend.
+  // Step 1: Respec Talismans, Ascend, reset Variables
+  // Step 2: maybe some initial stuff, for now no further steps
+  if (scriptNoCurrentAction() && player.challengecompletions["ten"] >= scriptSettings.flowAscendAtC10Completions && player.runeshards > 400000) {
+    sLog(2, "Ascending with " + player.challengecompletions.ten + " C10 completions after " + player.ascensionCounter + " seconds");
+    
+    if (scriptSettings.autoLog) scriptLogStuff();
+    
+    // Respec to 2 4 5
+    mirrorTalismanStats = [null, -1, 1, -1, 1, 1];
+    respecTalismanConfirm(8);
+    
+    // Ascend
+    reset(4); // to skip confirmation, usually it should be resetCheck('ascend')
+    scriptSetAutoSac(true);
+    
+    // reset script variables
+    scriptVariables.saveOfferingsForRespecs = false; //A
+    scriptVariables.pushLastTalismanSum = player.talismanRarity.reduce( (sum, current) => sum + current, 0 ); //A
+    scriptVariables.pushLastAntSum = scriptCalculateAntSum(false); //A
+    scriptVariables.lastReincChallengeParts = 0; //A
+    scriptVariables.lastTransChallengeParts = 0; //A
+    scriptVariables.autoRunesWaitForTech = 0; //A
+    scriptVariables.ascensionBlessingRespecDone = false;
+    scriptVariables.lastTransChallengeCounter = -1000;
+    scriptVariables.lastReincChallengeCounter = 0;
+    scriptVariables.lastLogCounter = 0;
+    
+    scriptVariables.currentAction = ""; //A
+    scriptVariables.actionStep = -1; //A
+    
+    sLog(1, "Ascended");
   }
   
   // Handle particle/challenge pushes
@@ -295,42 +335,6 @@ function scriptAutoGameFlow () {
     resetCheck('reincarnate');
     sLog(8, "Reincarnated (" + tempTimer + ")");
   }
-  
-  // Handle Ascension
-  // If target number of C10 completions is reached, ascend. This is going to be right after a challenge push, so it is not necessary to do another.
-  // Needed Shards are at 800k to match up with the push condition. The script will push until it no longer can significantly boost ants by it, then ascend.
-  // Step 1: Respec Talismans, Ascend, reset Variables
-  // Step 2: maybe some initial stuff, for now no further steps
-  if (scriptNoCurrentAction() && player.challengecompletions["ten"] >= scriptSettings.flowAscendAtC10Completions && player.runeshards > 800000 && player.antSacrificeTimer > 300) {
-    sLog(2, "Ascending with " + player.challengecompletions.ten + " C10 completions after " + player.ascensionCounter + " seconds");
-    
-    if (scriptSettings.autoLog) scriptLogStuff();
-    
-    // Respec to 2 4 5
-    mirrorTalismanStats = [null, -1, 1, -1, 1, 1];
-    respecTalismanConfirm(8);
-    
-    // Ascend
-    reset(4); // to skip confirmation, usually it should be resetCheck('ascend')
-    scriptSetAutoSac(true);
-    
-    // reset script variables
-    scriptVariables.saveOfferingsForRespecs = false; //A
-    scriptVariables.pushLastTalismanSum = player.talismanRarity.reduce( (sum, current) => sum + current, 0 ); //A
-    scriptVariables.pushLastAntSum = scriptCalculateAntSum(false); //A
-    scriptVariables.lastReincChallengeParts = 0; //A
-    scriptVariables.lastTransChallengeParts = 0; //A
-    scriptVariables.autoRunesWaitForTech = 0; //A
-    scriptVariables.ascensionBlessingRespecDone = false;
-    scriptVariables.lastTransChallengeCounter = -1000;
-    scriptVariables.lastReincChallengeCounter = 0;
-    scriptVariables.lastLogCounter = 0;
-    
-    scriptVariables.currentAction = ""; //A
-    scriptVariables.actionStep = -1; //A
-    
-    sLog(1, "Ascended");
-  }
 }
 
 // Automatically levels and enhances talismans (only the ones set in settings are enhanced)
@@ -359,18 +363,18 @@ function scriptAutoTalismans () {
 
   for (let i = 1; i < 8; i++) {
     // Check if Talisman is unlocked
-	if (i >= 1 && i <= 5) {
-	  if (!(player.achievements[unlockAchievements[i]] === 1)) continue;
-	} else if (i === 6) {
-	  if (!player.antUpgrades[12] > 0) continue;
-	} else if (i === 7) {
-	  if (!player.shopUpgrades.talismanBought) continue;
-	}
-
-	if (scriptSettings.talismansEnhance.includes(i)) {
-	  buyTalismanEnhance(i);
-	}
-	buyTalismanLevels(i);
+	  if (i >= 1 && i <= 5) {
+	    if (!(player.achievements[unlockAchievements[i]] === 1)) continue;
+	  } else if (i === 6) {
+	    if (!player.antUpgrades[12] > 0) continue;
+	  } else if (i === 7) {
+	    if (!player.shopUpgrades.talismanBought) continue;
+	  }
+    
+	  if (scriptSettings.talismansEnhance.includes(i)) {
+	    buyTalismanEnhance(i);
+	  }
+	  buyTalismanLevels(i);
   }
 }
 
