@@ -98,6 +98,7 @@ scriptVariables.lastReincChallengeCounter = player.ascensionCounter; //A
 scriptVariables.lastTransChallengeParts = player.reincarnationPoints.exponent; //A
 scriptVariables.lastTransChallengeCounter = player.ascensionCounter; //A
 scriptVariables.autoRunesWaitForTech = 0; //A
+scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0
 // checks if Talismans 1 is 1 3 5
 scriptVariables.ascensionBlessingRespecDone = player.talismanOne.reduce(((result,value,index)=>{let checkArray = [null, 1, -1, 1, -1, 1]; return value === checkArray[index] && result;}), true); //A
 scriptVariables.lastLogCounter = 0; //A
@@ -242,7 +243,8 @@ function scriptAutoGameFlow () {
     scriptVariables.lastTransChallengeCounter = -1000;
     scriptVariables.lastReincChallengeCounter = 0;
     scriptVariables.lastLogCounter = 0;
-    
+    scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0
+
     scriptVariables.currentAction = ""; //A
     scriptVariables.actionStep = -1; //A
     
@@ -282,16 +284,18 @@ function scriptAutoGameFlow () {
   }
   // Step 1: Reincarnate
   if (scriptVariables.currentAction === "push" && (scriptVariables.actionStep === 1) &&
-      (player.reincarnationcounter > scriptVariables.pushLastReincTimer + 30 || player.reincarnationcounter < scriptVariables.pushLastReincTimer)) {
+      (player.reincarnationcounter > scriptVariables.pushLastReincTimer + 30 ||
+          player.reincarnationcounter < scriptVariables.pushLastReincTimer ||
+          scriptVariables.hasUpgrade3x8)) {
     // Reincarnate
-    resetCheck('reincarnate');
+    if (!scriptVariables.hasUpgrade3x8) resetCheck('reincarnate');
     scriptVariables.actionStep++;
   }
   // Step 2, 6 and 7: Reincarnate
   if (scriptVariables.currentAction === "push" && (scriptVariables.actionStep === 2 || scriptVariables.actionStep === 6 || scriptVariables.actionStep === 7) &&
       (player.reincarnationcounter > (scriptVariables.actionStep === 7 ? 60 : 30))) {
     // Reincarnate
-    resetCheck('reincarnate');
+    if (!scriptVariables.hasUpgrade3x8) resetCheck('reincarnate');
     scriptVariables.actionStep++;
   }
   // Step 3: Start Trans Challenges
@@ -309,13 +313,13 @@ function scriptAutoGameFlow () {
   // Step 5: Reincarnate
   if (scriptVariables.currentAction === "push" && scriptVariables.actionStep === 5 &&
       (scriptVariables.currentReincChallenge === -1)) {
-    resetCheck('reincarnate');
+    if (!scriptVariables.hasUpgrade3x8) resetCheck('reincarnate');
     scriptVariables.actionStep++;
   }
   // Step 8: Reincarnate and Respec
   if (scriptVariables.currentAction === "push" && scriptVariables.actionStep === 8 &&
-      (player.reincarnationcounter > 60 && player.runeshards > 400000)) {
-    resetCheck('reincarnate');
+      ((player.reincarnationcounter > 60 || scriptVariables.hasUpgrade3x8) && player.runeshards > 400000)) {
+    if (!scriptVariables.hasUpgrade3x8) resetCheck('reincarnate');
     scriptVariables.pushLastAntSum = scriptCalculateAntSum(false);
     mirrorTalismanStats = [null, 1, -1, 1, -1, 1]; //Respec to 1 3 5
     respecTalismanConfirm(8);
