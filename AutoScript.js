@@ -9,8 +9,8 @@ EXPORT YOUR SAVE BEFORE USING!!!
 
 Note that some (or all) features of this script may be seen as cheating by some people, especially features that directly emulate ingame upgrades.
 So when bragging about your achievements you should probably mention that you used a script to do them, to be fair to players who did it all manually.
-I've tried to only use functions that are also directly called by pressing buttons with the same arguments, so hopefully the script will not do anything that they player cant do.
-But because sometimes buttons are hidden but the functions still work, so there is no guarantee that the script will not cheat (e.g. in my tests the script bought some talismans I hadn't unlocked yet...)
+I've tried to only use functions that are also directly called by pressing buttons with the same arguments, so hopefully the script will not do anything that the player cant do.
+But sometimes buttons are hidden but the functions still work, so there is no guarantee that the script will not cheat (e.g. in my tests the script bought some talismans I hadn't unlocked yet...)
 Press F12 and paste the script into the Javascript console to use it. Refresh the page or use window.clearInterval(###Interval ID returned after copypaste here###) to get rid of it.
 There is some logging enabled by default, which will show up in the JS console.
 Make a copy of the script and change the settings (everything starting with scriptSettings) to make some simple changes to script behaviour.
@@ -23,15 +23,39 @@ I'll most likely merge useful pull requests as long as I am playing the game and
 Please do not ping me with questions about how the script works unless you did some reasonable effort on understanding it yourself.
 
 Since it is public now I will most likely add some convenience features like Tampermonkey comments and some sort of GUI if I can. For now this is all still a work in progress and fairly incomplete.
-It can run an ascension from start to finish if you have row 1 of cube upgrades
+It can run an ascension from start to finish if you have row 1 of cube upgrades.
+*/
+
+/*
+Changelog
+1.3    Added auto cube opener and particle building autobuyer
+- Added this changelog
+- Log lists sum of cube blessings now
+- Added very simple auto cube opener (opens all cubes every second). Turned off by default.
+- Added Particle building autobuyer. Turned off by default.
+- Added comments to settings
+- Lowered default wait time for transcension and reincarnation challenges
+
+1.2    Cube upgrade 3x8 in challenge pushes
+Merged a change by AlienC4 to improve challenge pushes with cube upgrade 3x8
+
+1.1    Community feedback
+Incorporated feedback from AlienC4 and Xander374
+- Adjusted default rune weights
+- Periodic status log lists highest challenge completions now, and lists all talismans
+- Reincarnation counter capped to 60000
+- Wait a little to enter challenges after ascension to gain a few particles first
+- Ascend sooner (check moved up and condition softened)
+- Fix indentation
+
+1.0    Initial version
+Initial version of the script. Game version: v1.011 TESTING! Update: July 22, 2020 7:45 PM PDT
 */
 
 /*
 TODO:
-- Comments on settings
-- Auto particle buildings for pre row 1
+- Handle 3x8 (gain parts without reincarnation)
 - Auto Research for pre-roomba?
-- Auto Open Cubes
 - Move settings to browser storage
 - Tampermonkey stuff for automatic script loading
 - Refactor into a looping function to simplify variable names without risking naming conflicts and get rid of the window.setInterval
@@ -45,42 +69,46 @@ scriptSettings.autoTurnedOn = true;
 scriptSettings.scriptInterval = 1000;
 
 // Toggles for Script features
-scriptSettings.autoLog            = true; // Does some periodic logging, as long as logLevel is at least 2
-scriptSettings.autoGameFlow       = true; // Reincarnate, Ascend, do challenges, respec runes
-scriptSettings.autoTalismans      = true; // Automatically enhances and fortifies talismans and buys Mortuus ant
-scriptSettings.autoChallengeTrans = true; // Runs Trans challenges, but only if triggered manually or by autoGameFlow
-scriptSettings.autoChallengeReinc = true; // Runs Reinc challenges, but only if triggered manually or by autoGameFlow
-scriptSettings.autoRunes          = true; // Automatically levels runes. Saves offerings just before getting some techs and at ant timer < 10 minutes
-scriptSettings.autoReincUpgrades  = true; // Automatically buys Particle upgrades
+scriptSettings.autoLog            = true;  // Does some periodic logging, as long as logLevel is at least 2
+scriptSettings.autoGameFlow       = true;  // Reincarnate, Ascend, do challenges, respec runes
+scriptSettings.autoTalismans      = true;  // Automatically enhances and fortifies talismans and buys Mortuus ant
+scriptSettings.autoChallengeTrans = true;  // Runs Trans challenges, but only if triggered manually or by autoGameFlow
+scriptSettings.autoChallengeReinc = true;  // Runs Reinc challenges, but only if triggered manually or by autoGameFlow
+scriptSettings.autoRunes          = true;  // Automatically levels runes. Saves offerings just before getting some techs and at ant timer < 10 minutes
+scriptSettings.autoReincUpgrades  = true;  // Automatically buys Particle upgrades
+scriptSettings.autoOpenCubes      = false; // Automatically opens all cubes
+scriptSettings.autoPartBuildings  = false; // Automatically buy particle buildings every script interval. For when you don't have c1x7 to c1x9 yet.
 
 // Logging Settings
 scriptSettings.logLevel = 10; // How much to log. 10 prints all messages, 0 logs only script start.
-scriptSettings.logInterval = 300; // Logs some general game data to console every X seconds
+scriptSettings.logInterval = 300; // Logs some general game data to console every X seconds. Logging level needs to be at least 2 for this to work.
 
 // Game flow settings
-scriptSettings.flowReincChallengePartMulti = 1.1;
-scriptSettings.flowReincChallengePartPlus = 1000;
-scriptSettings.flowMinTimeBetweenReincChallenges = 60;
-scriptSettings.flowTransChallengePartPlus = 1000;
-scriptSettings.flowTransChallengePartMulti = 1.1;
-scriptSettings.flowMinTimeBetweenTransChallenges = 60;
-scriptSettings.flowKeepPushingWithoutMaxedTalis = true; // false: Push only if Talisman levels have changed, or are maxed. true: Keep pushing if ant levels change enough, even when talismans are not maxed
-scriptSettings.flowPushAntChange = 300;
-scriptSettings.flowAscendAtC10Completions = 1;
+scriptSettings.flowReincChallengePartMulti = 1.1; // Start reincarnation challenges only if particle exponent has multiplied at least this much since last time (or since script start)
+scriptSettings.flowReincChallengePartPlus = 1000; // ... if it increased by this much
+scriptSettings.flowMinTimeBetweenReincChallenges = 60; // Minimum Ascension Counter (= realtime) between Reinc challenges
+scriptSettings.flowTransChallengePartMulti = 1.1; // Same as above but for Trans challenges
+scriptSettings.flowTransChallengePartPlus = 1000; // Same
+scriptSettings.flowMinTimeBetweenTransChallenges = 60; // Same
+// false: Do a challenge push with rune respec only if Talisman levels have changed, or when talismans are maxed push when ant levels have changed enough.
+// true: Keep pushing if ant levels change enough, even when talismans are not maxed
+scriptSettings.flowKeepPushingWithoutMaxedTalis = true;
+scriptSettings.flowPushAntChange = 300; // How much the sum of ant generator levels (excluding first one) needs to change to start another push
+scriptSettings.flowAscendAtC10Completions = 1; // Ascend only if C10 has been completed at least this many times
 
 // Talisman settings
-scriptSettings.talismanInterval = 10000;
-scriptSettings.talismansEnhance = [1, 2, 3, 4, 6];
+scriptSettings.talismanInterval = 10000; // How often to buy Talismans. Interval in Milliseconds.
+scriptSettings.talismansEnhance = [1, 2, 3, 4, 6]; // Which talismans to enhance. All talismans are fortified.
 
 // Auto Trans Challenge settings
-scriptSettings.maxTransChallengeDuration = 20;
+scriptSettings.maxTransChallengeDuration = 5; // How long to wait for completion of trans challenges (trans counter)
 
 // Auto Reinc Challenge settings
-scriptSettings.maxReincChallengeDuration = 60;
+scriptSettings.maxReincChallengeDuration = 30; // How long to wait for completion of reinc challenges (reinc counter)
 
 // Auto Runes settings
-scriptSettings.runeCaps = [1000, 1000, 1000, 1000, 1000];
-scriptSettings.runeWeights = [1, 2, 1, 3, 4];
+scriptSettings.runeCaps = [1000, 1000, 1000, 1000, 1000]; // Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)
+scriptSettings.runeWeights = [1, 2, 1, 3, 4]; // Weights for how many offerings to put into each rune
 
 // Variables, don't change manually
 let scriptVariables = {};
@@ -114,7 +142,7 @@ function sLog(level, text) {
 // Logs stuff periodically
 function scriptLogStuff() {
   sLog(2, "=== Info Dump at Ascension timer " + Math.floor(player.ascensionCounter) + " ===");
-  
+
   // Logs Challenge completions
   sLog(2, "Challenge Info: " +
   "Trans: " + player.highestchallengecompletions.one+"/"+player.highestchallengecompletions.two+"/"+player.highestchallengecompletions.three+"/"+player.highestchallengecompletions.four+"/"+
@@ -132,10 +160,10 @@ function scriptLogStuff() {
   player.talismanRarity[6] + "x" + player.talismanLevels[6] + "/" +
   player.talismanRarity[7] + "x" + player.talismanLevels[7]
   );
-  
+
   // Logs some Cube stats
   let c = player.cubesThisAscension.challenges, r = player.cubesThisAscension.reincarnation, a = player.cubesThisAscension.ascension;
-  sLog(2, "Cube Info:      " + (format((c + r + a) / player.ascensionCounter, 4, true) + "C/s   current Cubes: " + player.wowCubes));
+  sLog(2, "Cube Info:      " + (format((c + r + a) / player.ascensionCounter, 4, true)) + "C/s   current: " + Math.floor(player.wowCubes) + "   blessings: " + Object.values(player.cubeBlessings).reduce((s, t) => s + t));
 }
 
 function scriptAutoLog() {
@@ -170,16 +198,16 @@ function scriptNoCurrentAction() {
 // Handles the Game flow, starting challenges, respeccing talismans, reincarnating early, and so on. Does not ascend.
 function scriptAutoGameFlow () {
   let maxTalismanBonus = Math.max(window.rune1Talisman, window.rune2Talisman, window.rune3Talisman, window.rune4Talisman, window.rune5Talisman);
-  
+
   // Determine desired reincarnation time
   // TODO: Determine if > 60s is needed
   if (player.upgrades[70] < 1) scriptVariables.targetReincTime = 30; // If you don't have the e22 particle upgrade, reincarnate every 30s to keep max obt up to date
   else if (player.reincarnationPoints.exponent < 10000) scriptVariables.targetReincTime = 60;  // With the e22 particle upgrade but low particles, reincarnate every 60s to keep max obt fairly decent and quickly boost particles
   else scriptVariables.targetReincTime = 60000; // Auto Reincarnation should be on and set to 4440, if not reincarnate after a long time
-  
+
   // Turn Ant Sacrifice back on if doing nothing
   if (scriptNoCurrentAction()) scriptSetAutoSac(true);
-  
+
   // Handle doing challenges occasionally (before blessings)
   if (scriptNoCurrentAction() && (!scriptVariables.ascensionBlessingRespecDone || player.challengecompletions["nine"] === 0) && player.ascensionCounter > 30) {
     // Do Reincarnation Challenges if particles have changed significantly
@@ -200,12 +228,12 @@ function scriptAutoGameFlow () {
       sLog(6, "Started Trans Challenges");
     }
   }
-  
+
   // Start saving 800k offerings for respecs once prism goes above 850
   // Once it is on it stays on
   scriptVariables.saveOfferingsForRespecs = scriptVariables.saveOfferingsForRespecs || ((player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > 850);
   // see around line 500 in updatehtml.js 'if (currentTab == "runes"' for bonus level calc
-  
+
   // Do Talisman respec for blessings once prism can go above 1050
   if (scriptNoCurrentAction() && !scriptVariables.ascensionBlessingRespecDone && (player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > 1050 && player.runeshards > 400000) {
     mirrorTalismanStats = [null, 1, -1, 1, -1, 1]; //Respec to 1 3 5
@@ -213,7 +241,7 @@ function scriptAutoGameFlow () {
     scriptVariables.ascensionBlessingRespecDone = true;
     sLog(2, "Respecced Talismans to 135 for blessings");
   }
-  
+
   // Handle Ascension
   // If target number of C10 completions is reached, ascend. This is going to be right after a challenge push, so it is not necessary to do another.
   // Needed Shards are at 800k to match up with the push condition. The script will push until it no longer can significantly boost ants by it, then ascend.
@@ -221,17 +249,17 @@ function scriptAutoGameFlow () {
   // Step 2: maybe some initial stuff, for now no further steps
   if (scriptNoCurrentAction() && player.challengecompletions["ten"] >= scriptSettings.flowAscendAtC10Completions && player.runeshards > 400000) {
     sLog(2, "Ascending with " + player.challengecompletions.ten + " C10 completions after " + player.ascensionCounter + " seconds");
-    
+
     if (scriptSettings.autoLog) scriptLogStuff();
-    
+
     // Respec to 2 4 5
     mirrorTalismanStats = [null, -1, 1, -1, 1, 1];
     respecTalismanConfirm(8);
-    
+
     // Ascend
     reset(4); // to skip confirmation, usually it should be resetCheck('ascend')
     scriptSetAutoSac(true);
-    
+
     // reset script variables
     scriptVariables.saveOfferingsForRespecs = false; //A
     scriptVariables.pushLastTalismanSum = player.talismanRarity.reduce( (sum, current) => sum + current, 0 ); //A
@@ -247,10 +275,10 @@ function scriptAutoGameFlow () {
 
     scriptVariables.currentAction = ""; //A
     scriptVariables.actionStep = -1; //A
-    
+
     sLog(1, "Ascended");
   }
-  
+
   // Handle particle/challenge pushes
   // If more than 800k offerings are available
   // ... and talisman levels are above some threshold (first orange) and changed since last time
@@ -275,7 +303,7 @@ function scriptAutoGameFlow () {
     scriptVariables.pushLastAntSum = scriptCalculateAntSum(false);
     scriptVariables.currentAction = "push";
     scriptVariables.actionStep = 1;
-    
+
     scriptSetAutoSac(false);
     mirrorTalismanStats = [null, 1, 1, -1, 1, -1]; //Respec to 1 2 4
     respecTalismanConfirm(8);
@@ -332,7 +360,7 @@ function scriptAutoGameFlow () {
     scriptVariables.currentAction = "";
     scriptVariables.actionStep = -1;
   }
-  
+
   // Handle Reincarnation
   if (scriptNoCurrentAction() && (player.reincarnationcounter > scriptVariables.targetReincTime || ((player.reincarnationPoints.exponent + 100)*1.05 < reincarnationPointGain.exponent && player.reincarnationcounter > 60))) {
     let tempTimer = player.reincarnationcounter;
@@ -344,17 +372,17 @@ function scriptAutoGameFlow () {
 // Automatically levels and enhances talismans (only the ones set in settings are enhanced)
 function scriptAutoTalismans () {
   if (!(player.challengecompletions.nine > 0.5)) return; // Don't try this if talismans are not available
-  
+
   // Only act every talismanInterval
   scriptVariables.talismanCounter += scriptSettings.scriptInterval;
   if (scriptVariables.talismanCounter < scriptSettings.talismanInterval) return;
   scriptVariables.talismanCounter = 0;
-  
+
   let unlockAchievements = [null, 119, 126, 133, 140, 147, null, null];
 
   // Autobuy Mortuus Est
   buyAntUpgrade('1e100',true,12);
-  
+
   // Autobuy Shards and White Fragments if less than 1e8, and buying for 10% of obt will give more than twice the amount already available
   if (player.talismanShards < 1e8 && 2 * player.talismanShards < player.researchPoints/1e7) {
     toggleTalismanBuy(10);
@@ -374,7 +402,7 @@ function scriptAutoTalismans () {
 	  } else if (i === 7) {
 	    if (!player.shopUpgrades.talismanBought) continue;
 	  }
-    
+
 	  if (scriptSettings.talismansEnhance.includes(i)) {
 	    buyTalismanEnhance(i);
 	  }
@@ -387,14 +415,14 @@ function scriptAutoTalismans () {
 function scriptAutoChallengeTrans() {
   if (scriptVariables.currentTransChallenge < 0) return;
   let ordinals = [null,'one','two','three','four','five','six','seven','eight','nine','ten']
-  
+
   if (!player.retrychallenges) toggleRetryChallenges();
-  
+
   if (scriptVariables.currentTransChallenge === 0) {
     scriptVariables.previousAutoSac = player.autoAntSacrifice;
     scriptSetAutoSac(false);
   }
-    
+
   // move to next challenge if the current one is taking too long, and stop challenging after c5 is done
   if (player.currentChallenge == "" || (player.currentChallenge == ordinals[scriptVariables.currentTransChallenge] && player.transcendcounter > scriptSettings.maxTransChallengeDuration)) {
     if (player.currentChallenge != "") resetCheck('challenge');
@@ -415,16 +443,16 @@ function scriptAutoChallengeTrans() {
 function scriptAutoChallengeReinc() {
   if (scriptVariables.currentReincChallenge < 0) return;
   if (scriptVariables.currentReincChallenge < 5) scriptVariables.currentReincChallenge = 5;
-  
+
   let ordinals = [null,'one','two','three','four','five','six','seven','eight','nine','ten']
-  
+
   if (!player.retrychallenges) toggleRetryChallenges();
-  
+
   if (scriptVariables.currentReincChallenge === 5) {
     scriptVariables.previousAutoSac = player.autoAntSacrifice;
     scriptSetAutoSac(false);
   }
-    
+
   // move to next challenge if the current one is taking too long, and stop challenging after c5 is done
   if (player.currentChallengeRein == "" || (player.currentChallengeRein == ordinals[scriptVariables.currentReincChallenge] && player.reincarnationcounter > scriptSettings.maxReincChallengeDuration)) {
     if (player.currentChallengeRein != "") {
@@ -439,7 +467,7 @@ function scriptAutoChallengeReinc() {
       scriptSetAutoSac(scriptVariables.previousAutoSac);
       return;
     }
-    
+
     // Don't try if you cant succeed
     switch (scriptVariables.currentReincChallenge) {
       case  7:
@@ -457,7 +485,7 @@ function scriptAutoChallengeReinc() {
       case 11:
         return;
     }
-    
+
     toggleChallenges(ordinals[scriptVariables.currentReincChallenge]);
   }
 }
@@ -487,7 +515,7 @@ function scriptLevelRune(rune, offerings) {
 function scriptAutoRunes() {
   // If saving for respec, keep at least 800k
   if (scriptVariables.saveOfferingsForRespecs && player.runeshards < 800000) return;
-  
+
   // Save up when rune exp boosting techs are close, also if ants are available don't spend before 10m ant time
   let obtPerSec = calculateAutomaticObtainium();
   if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 1) && player.researches[23] < researchMaxLevels[23] && obtPerSec > researchBaseCosts[23] / 5) {
@@ -506,12 +534,12 @@ function scriptAutoRunes() {
     return;
   }
   if (player.reincarnationPoints.exponent > 800 && player.antSacrificeTimer < 600) return;
-  
-  
+
+
   // Spending
   // Level equally, thrift first, skipping maxed runes
   let availableOfferings = player.runeshards - (scriptVariables.saveOfferingsForRespecs ? 800000 : 0);
-  if (availableOfferings < (player.upgrades[78] ? 10000 : 10)) return; // Only spend if spending equally is possible
+  if (availableOfferings < (player.upgrades[78] > 0.5 ? 10000 : 10)) return; // Only spend if spending equally is possible
   let offeringsToSpend = 0;
   let runeCount = 0;
   // Spend equally. Count uncapped runes, then spend equally across all
@@ -521,14 +549,14 @@ function scriptAutoRunes() {
     }
   }
   offeringsToSpend = availableOfferings / runeCount;
-  
+
   for (let i = 1; i <= 5; i++) {
     let runeToLevel = i;
     if (i === 4) runeToLevel = 1;
     if (i === 1) runeToLevel = 4;
     if (player.runelevels[runeToLevel-1] < scriptSettings.runeCaps[runeToLevel-1]) scriptLevelRune(runeToLevel, offeringsToSpend * scriptSettings.runeWeights[runeToLevel-1]);
   }
-  
+
   // If we ended up spending, we're not waiting
   scriptVariables.autoRunesWaitForTech = 0;
 }
@@ -537,6 +565,30 @@ function scriptAutoRunes() {
 function scriptAutoReincUpgrades() {
   for (let i = 61; i <= 80; i++) {
     if (player.upgrades[i] < 0.5 && player.reincarnationPoints.greaterThanOrEqualTo(Decimal.pow(10, upgradeCosts[i]))) buyUpgrades('reincarnation', i);
+  }
+}
+
+// Opens all cubes
+function scriptAutoOpenCubes() {
+  openCube(1,true);
+}
+
+// Automatically buy particle buildings (for when you don't have the relevant row 1 cube upgrades)
+// Tries to buy 10k with each script run
+function scriptAutoPartBuildings() {
+  toggleBuyAmount(1000,'particle');
+  let baseCost = 1;
+  for (let j = 0; j < 5; j++) {
+    switch (j) {
+      case 0: baseCost = 1e16; break;
+      case 1: baseCost = 1e8; break;
+      case 2: baseCost = 1e4; break;
+      case 3: baseCost = 100; break;
+      case 4: baseCost = 1; break;
+    }
+    for (let i = 0; i < 100 && player.reincarnationPoints.greaterThanOrEqualTo(player[ordinals[4-j]+"CostParticles"]); i++) {
+      buyParticleBuilding(ordinals[4-j],baseCost);
+    }
   }
 }
 
@@ -550,6 +602,8 @@ function scriptAutoAll () {
     if (scriptSettings.autoChallengeReinc) scriptAutoChallengeReinc();
     if (scriptSettings.autoRunes) scriptAutoRunes();
     if (scriptSettings.autoReincUpgrades) scriptAutoReincUpgrades();
+    if (scriptSettings.autoOpenCubes) scriptAutoOpenCubes();
+    if (scriptSettings.autoPartBuildings) scriptAutoPartBuildings();
   }
 }
 
