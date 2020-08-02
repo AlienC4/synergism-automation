@@ -313,7 +313,7 @@ function scriptAutoGameFlow () {
   // Step 5: Reincarnate
   if (scriptVariables.currentAction === "push" && scriptVariables.actionStep === 5 &&
       (scriptVariables.currentReincChallenge === -1)) {
-    if (!scriptVariables.hasUpgrade3x8) resetCheck('reincarnate');
+    resetCheck('reincarnate');
     scriptVariables.actionStep++;
   }
   // Step 8: Reincarnate and Respec
