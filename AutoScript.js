@@ -28,7 +28,13 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
-1.4    Fixes for new game version
+1.5   06-Aug-20  AutoRunes improvements and new version optimization
+- Added several AutoRunes settings to customize it
+- Due to some game changes it's currently not possible to split large amounts of offerings efficiently across all runes. Added a limiter setting to keep the script from freezing.
+- Added several AutoFlow settings
+- Several optimizations for new version gameplay
+
+1.4   06-Aug-20  Fixes for new game version
 - Game version: v1.011 TESTING! Update: August 6, 2020 12:12 AM PDT
 - Default rune caps set to 5000
 - Direct checks of rune level adjusted to 4 times the old value
@@ -86,7 +92,7 @@ scriptSettings.autoOpenCubes      = false; // Automatically opens all cubes
 scriptSettings.autoPartBuildings  = false; // Automatically buy particle buildings every script interval. For when you don't have c1x7 to c1x9 yet.
 
 // Logging Settings
-scriptSettings.logLevel = 10; // How much to log. 10 prints all messages, 0 logs only script start.
+scriptSettings.logLevel = 7; // How much to log. 10 prints all messages, 0 logs only script start.
 scriptSettings.logInterval = 300; // Logs some general game data to console every X seconds. Logging level needs to be at least 2 for this to work.
 
 // Game flow settings
@@ -96,25 +102,34 @@ scriptSettings.flowMinTimeBetweenReincChallenges = 60; // Minimum Ascension Coun
 scriptSettings.flowTransChallengePartMulti = 1.1; // Same as above but for Trans challenges
 scriptSettings.flowTransChallengePartPlus = 1000; // Same
 scriptSettings.flowMinTimeBetweenTransChallenges = 60; // Same
+scriptSettings.flowStartSavingOfferingsRuneLevel = 1000; // Post-respec prim rune level to start saving offerings for respecs
+scriptSettings.flowRespecToBlessingsRuneLevel = 4000; // Post-respec prim rune level to respec into 1 3 5
+scriptSettings.flowPushTalismanLevel = 1; // Minimum Talisman 1 level to start Challenge Pushes
 // false: Do a challenge push with rune respec only if Talisman levels have changed, or when talismans are maxed push when ant levels have changed enough.
 // true: Keep pushing if ant levels change enough, even when talismans are not maxed
 scriptSettings.flowKeepPushingWithoutMaxedTalis = true;
 scriptSettings.flowPushAntChange = 300; // How much the sum of ant generator levels (excluding first one) needs to change to start another push
 scriptSettings.flowAscendAtC10Completions = 1; // Ascend only if C10 has been completed at least this many times
+scriptSettings.flowAscendImmediately = true; // Ascend once the target C10 completions have been reached, ignoring all other checks. May ascend without first respeccing talismans!
 
 // Talisman settings
 scriptSettings.talismanInterval = 10000; // How often to buy Talismans. Interval in Milliseconds.
 scriptSettings.talismansEnhance = [1, 2, 3, 4, 6]; // Which talismans to enhance. All talismans are fortified.
 
 // Auto Trans Challenge settings
-scriptSettings.maxTransChallengeDuration = 5; // How long to wait for completion of trans challenges (trans counter)
+scriptSettings.maxTransChallengeDuration = 2; // How long to wait for completion of trans challenges (trans counter)
 
 // Auto Reinc Challenge settings
-scriptSettings.maxReincChallengeDuration = 30; // How long to wait for completion of reinc challenges (reinc counter)
+scriptSettings.maxReincChallengeDuration = 10; // How long to wait for completion of reinc challenges (reinc counter)
 
 // Auto Runes settings
 scriptSettings.runeCaps = [5000, 5000, 5000, 5000, 5000]; // Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)
 scriptSettings.runeWeights = [1, 2, 1, 3, 4]; // Weights for how many offerings to put into each rune
+scriptSettings.runeAntTimer = 10; // Will not spend offerings until the sacrifice timer has reached this amount of seconds
+scriptSettings.runeTech5x3Wait = 1; // Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.
+scriptSettings.runeTech4x16Wait = 1; // Same but for 4x16
+scriptSettings.runeTech4x17Wait = 1; // Same but for 4x17
+scriptSettings.runeSpendingCap = 1e7; // Spend at most this many offerings at once to keep the script from lagging
 
 // Variables, don't change manually
 let scriptVariables = {};
@@ -207,20 +222,20 @@ function scriptAutoGameFlow () {
 
   // Determine desired reincarnation time
   // TODO: Determine if > 60s is needed
-  if (player.upgrades[70] < 1) scriptVariables.targetReincTime = 30; // If you don't have the e22 particle upgrade, reincarnate every 30s to keep max obt up to date
-  else if (player.reincarnationPoints.exponent < 10000) scriptVariables.targetReincTime = 60;  // With the e22 particle upgrade but low particles, reincarnate every 60s to keep max obt fairly decent and quickly boost particles
-  else scriptVariables.targetReincTime = 60000; // Auto Reincarnation should be on and set to 4440, if not reincarnate after a long time
+  if (player.upgrades[70] < 1) scriptVariables.targetReincTime = 10; // If you don't have the e22 particle upgrade, reincarnate every 30s to keep max obt up to date
+  else if (player.reincarnationPoints.exponent < 10000) scriptVariables.targetReincTime = 10;  // With the e22 particle upgrade but low particles, reincarnate every 60s to keep max obt fairly decent and quickly boost particles
+  else scriptVariables.targetReincTime = 10;// set very low because of current lategame balance //60000; // Auto Reincarnation should be on and set to 4440, if not reincarnate after a long time
 
   // Turn Ant Sacrifice back on if doing nothing
   if (scriptNoCurrentAction()) scriptSetAutoSac(true);
 
   // Start saving 800k offerings for respecs once prism goes above 850
   // Once it is on it stays on
-  scriptVariables.saveOfferingsForRespecs = scriptVariables.saveOfferingsForRespecs || ((player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > 850*4);
+  scriptVariables.saveOfferingsForRespecs = scriptVariables.saveOfferingsForRespecs || ((player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > scriptSettings.flowStartSavingOfferingsRuneLevel);
   // see around line 500 in updatehtml.js 'if (currentTab == "runes"' for bonus level calc
 
   // Do Talisman respec for blessings once prism can go above 1050
-  if (scriptNoCurrentAction() && !scriptVariables.ascensionBlessingRespecDone && (player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > 1050*4 && player.runeshards > 400000) {
+  if (scriptNoCurrentAction() && !scriptVariables.ascensionBlessingRespecDone && (player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > scriptSettings.flowRespecToBlessingsRuneLevel && player.runeshards > 400000) {
     mirrorTalismanStats = [null, 1, -1, 1, -1, 1]; //Respec to 1 3 5
     respecTalismanConfirm(8);
     scriptVariables.ascensionBlessingRespecDone = true;
@@ -232,14 +247,20 @@ function scriptAutoGameFlow () {
   // Needed Shards are at 800k to match up with the push condition. The script will push until it no longer can significantly boost ants by it, then ascend.
   // Step 1: Respec Talismans, Ascend, reset Variables
   // Step 2: maybe some initial stuff, for now no further steps
-  if (scriptNoCurrentAction() && player.challengecompletions["ten"] >= scriptSettings.flowAscendAtC10Completions && player.runeshards > 400000) {
+  if (player.challengecompletions["ten"] >= scriptSettings.flowAscendAtC10Completions && (scriptSettings.flowAscendImmediately  || (scriptNoCurrentAction() && player.runeshards > 400000))) {
     sLog(2, "Ascending with " + player.challengecompletions.ten + " C10 completions after " + player.ascensionCounter + " seconds");
 
     if (scriptSettings.autoLog) scriptLogStuff();
 
+    // Exit any running challenges
+    if (player.currentChallenge != "") resetCheck('challenge');
+    if (player.currentChallengeRein != "") resetCheck('reincarnationchallenge');
+    
     // Respec to 2 4 5
-    mirrorTalismanStats = [null, -1, 1, -1, 1, 1];
-    respecTalismanConfirm(8);
+    if (player.runeshards > 400000) {
+      mirrorTalismanStats = [null, -1, 1, -1, 1, 1];
+      respecTalismanConfirm(8);
+    }
 
     // Ascend
     reset(4); // to skip confirmation, usually it should be resetCheck('ascend')
@@ -256,7 +277,9 @@ function scriptAutoGameFlow () {
     scriptVariables.lastTransChallengeCounter = -1000;
     scriptVariables.lastReincChallengeCounter = 0;
     scriptVariables.lastLogCounter = 0;
-    scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0
+    scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0;
+    scriptVariables.currentTransChallenge = -1;
+    scriptVariables.currentReincChallenge = -1;
 
     scriptVariables.currentAction = ""; //A
     scriptVariables.actionStep = -1; //A
@@ -300,7 +323,7 @@ function scriptAutoGameFlow () {
   // 7. Reincarnate again after 60s
   // 8. Reincarnate again after 60s, update last push ant level again, and respec back to 1 3 5
   // 9. Wait 60 ingame seconds, turn ant sacrifice back on
-  if (scriptNoCurrentAction() && player.runeshards > 800000 && player.talismanRarity[1] >=5 && player.antSacrificeTimer > 300 &&
+  if (scriptNoCurrentAction() && player.runeshards > 800000 && scriptVariables.saveOfferingsForRespecs && player.talismanRarity[1] >= scriptSettings.flowPushTalismanLevel && player.antSacrificeTimer > 300 &&
       (scriptVariables.pushLastTalismanSum == null
       || scriptVariables.pushLastTalismanSum < player.talismanRarity.reduce( (sum, current) => sum + current, 0 )
       || ((scriptSettings.flowKeepPushingWithoutMaxedTalis || scriptCheckTalismansMaxed()) && scriptCalculateAntSum(false) - scriptVariables.pushLastAntSum > scriptSettings.flowPushAntChange))) {
@@ -498,21 +521,28 @@ function scriptAutoChallengeReinc() {
 
 // AutoRune helper functions
 // Spends less than but as close as possible to the given amount of offerings on the given rune (1 to 5)
-function scriptLevelRune(rune, offerings) {
-  let spent = 0;
-  let tospend = 1000;
-  let amount = tospend * (player.upgrades[78] ? 1000 : 1);
-  toggleBuyAmount(tospend,'offering');
-  while (spent < offerings) {
-    if (spent + amount < offerings) {
-      redeemShards(rune);
-      spent += amount;
-    } else if (tospend <= 1) {
-      return;
-    } else {
-      tospend /= 10;
-      amount = tospend * (player.upgrades[78] ? 1000 : 1);
-      toggleBuyAmount(tospend,'offering');
+function scriptLevelRune(rune, offerings, spendAll) {
+  if (spendAll) {
+    toggleBuyAmount(1000,'offering');
+    redeemShards(rune);
+  }
+  else
+  {
+    let spent = 0;
+    let tospend = 100;
+    let amount = tospend * (player.upgrades[78] ? 1000 : 1);
+    toggleBuyAmount(tospend,'offering');
+    while (spent < offerings) {
+      if (spent + amount < offerings) {
+        redeemShards(rune);
+        spent += amount;
+      } else if (tospend <= 1) {
+        return;
+      } else {
+        tospend /= 10;
+        amount = tospend * (player.upgrades[78] ? 1000 : 1);
+        toggleBuyAmount(tospend,'offering');
+      }
     }
   }
 }
@@ -524,27 +554,28 @@ function scriptAutoRunes() {
 
   // Save up when rune exp boosting techs are close, also if ants are available don't spend before 10m ant time
   let obtPerSec = calculateAutomaticObtainium();
-  if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 1) && player.researches[23] < researchMaxLevels[23] && obtPerSec > researchBaseCosts[23] / 5) {
+  if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 1) && scriptSettings.runeTech5x3Wait > 0 && player.researches[23] < researchMaxLevels[23] && obtPerSec > researchBaseCosts[23] / scriptSettings.runeTech5x3Wait) {
     if (scriptVariables.autoRunesWaitForTech === 0) sLog(5, "Saving Offerings for 5x3");
     scriptVariables.autoRunesWaitForTech = 1;
     return;
   }
-  if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 2) && player.researches[91] < researchMaxLevels[91] && obtPerSec > researchBaseCosts[91] / 100) {
+  if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 2) && scriptSettings.runeTech4x16Wait > 0 && player.researches[91] < researchMaxLevels[91] && obtPerSec > researchBaseCosts[91] / scriptSettings.runeTech4x16Wait) {
     if (scriptVariables.autoRunesWaitForTech === 0) sLog(5, "Saving Offerings for 4x16");
     scriptVariables.autoRunesWaitForTech = 2;
     return;
   }
-  if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 3) && player.researches[92] < researchMaxLevels[92] && obtPerSec > researchBaseCosts[92] / 100) {
+  if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 3) && scriptSettings.runeTech4x17Wait > 0 && player.researches[92] < researchMaxLevels[92] && obtPerSec > researchBaseCosts[92] / scriptSettings.runeTech4x17Wait) {
     if (scriptVariables.autoRunesWaitForTech === 0) sLog(5, "Saving Offerings for 4x17");
     scriptVariables.autoRunesWaitForTech = 3;
     return;
   }
-  if (player.reincarnationPoints.exponent > 800 && player.antSacrificeTimer < 600) return;
+  if (player.reincarnationPoints.exponent > 800 && player.antSacrificeTimer < scriptSettings.runeAntTimer) return;
 
 
   // Spending
   // Level equally, thrift first, skipping maxed runes
   let availableOfferings = player.runeshards - (scriptVariables.saveOfferingsForRespecs ? 800000 : 0);
+  availableOfferings = Math.min(availableOfferings, scriptSettings.runeSpendingCap);
   if (availableOfferings < (player.upgrades[78] > 0.5 ? 10000 : 10)) return; // Only spend if spending equally is possible
   let offeringsToSpend = 0;
   let runeCount = 0;
@@ -560,7 +591,7 @@ function scriptAutoRunes() {
     let runeToLevel = i;
     if (i === 4) runeToLevel = 1;
     if (i === 1) runeToLevel = 4;
-    if (player.runelevels[runeToLevel-1] < scriptSettings.runeCaps[runeToLevel-1]) scriptLevelRune(runeToLevel, offeringsToSpend * scriptSettings.runeWeights[runeToLevel-1]);
+    if (player.runelevels[runeToLevel-1] < scriptSettings.runeCaps[runeToLevel-1]) scriptLevelRune(runeToLevel, offeringsToSpend * scriptSettings.runeWeights[runeToLevel-1], false);
   }
 
   // If we ended up spending, we're not waiting
