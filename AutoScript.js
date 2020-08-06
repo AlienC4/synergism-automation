@@ -28,6 +28,12 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.4    Fixes for new game version
+- Game version: v1.011 TESTING! Update: August 6, 2020 12:12 AM PDT
+- Default rune caps set to 5000
+- Direct checks of rune level adjusted to 4 times the old value
+- Challenge check moved down so it doesn't block other things
+
 1.3    Added auto cube opener and particle building autobuyer
 - Added this changelog
 - Log lists sum of cube blessings now
@@ -107,7 +113,7 @@ scriptSettings.maxTransChallengeDuration = 5; // How long to wait for completion
 scriptSettings.maxReincChallengeDuration = 30; // How long to wait for completion of reinc challenges (reinc counter)
 
 // Auto Runes settings
-scriptSettings.runeCaps = [1000, 1000, 1000, 1000, 1000]; // Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)
+scriptSettings.runeCaps = [5000, 5000, 5000, 5000, 5000]; // Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)
 scriptSettings.runeWeights = [1, 2, 1, 3, 4]; // Weights for how many offerings to put into each rune
 
 // Variables, don't change manually
@@ -208,34 +214,13 @@ function scriptAutoGameFlow () {
   // Turn Ant Sacrifice back on if doing nothing
   if (scriptNoCurrentAction()) scriptSetAutoSac(true);
 
-  // Handle doing challenges occasionally (before blessings)
-  if (scriptNoCurrentAction() && (!scriptVariables.ascensionBlessingRespecDone || player.challengecompletions["nine"] === 0) && player.ascensionCounter > 30) {
-    // Do Reincarnation Challenges if particles have changed significantly
-    if (scriptVariables.lastReincChallengeCounter + scriptSettings.flowMinTimeBetweenReincChallenges < player.ascensionCounter && scriptVariables.currentTransChallenge < 0
-    && (player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts * scriptSettings.flowReincChallengePartMulti || player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts + scriptSettings.flowReincChallengePartPlus)) {
-      scriptVariables.lastReincChallengeParts = player.reincarnationPoints.exponent;
-      scriptVariables.lastReincChallengeCounter = player.ascensionCounter;
-      scriptVariables.currentReincChallenge = 0;
-      sLog(6, "Started Reinc Challenges");
-    }
-    // Do Transcension Challenges if particles have changed significantly
-    // TODO: Maybe additional triggers would be useful (rune/talisman changes)
-    if (scriptVariables.lastTransChallengeCounter + scriptSettings.flowMinTimeBetweenTransChallenges < player.ascensionCounter && scriptVariables.currentReincChallenge < 0
-    && (player.reincarnationPoints.exponent > scriptVariables.lastTransChallengeParts * scriptSettings.flowTransChallengePartMulti || player.reincarnationPoints.exponent > scriptVariables.lastTransChallengeParts + scriptSettings.flowTransChallengePartPlus)) {
-      scriptVariables.lastTransChallengeParts = player.reincarnationPoints.exponent;
-      scriptVariables.lastTransChallengeCounter = player.ascensionCounter;
-      scriptVariables.currentTransChallenge = 0;
-      sLog(6, "Started Trans Challenges");
-    }
-  }
-
   // Start saving 800k offerings for respecs once prism goes above 850
   // Once it is on it stays on
-  scriptVariables.saveOfferingsForRespecs = scriptVariables.saveOfferingsForRespecs || ((player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > 850);
+  scriptVariables.saveOfferingsForRespecs = scriptVariables.saveOfferingsForRespecs || ((player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > 850*4);
   // see around line 500 in updatehtml.js 'if (currentTab == "runes"' for bonus level calc
 
   // Do Talisman respec for blessings once prism can go above 1050
-  if (scriptNoCurrentAction() && !scriptVariables.ascensionBlessingRespecDone && (player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > 1050 && player.runeshards > 400000) {
+  if (scriptNoCurrentAction() && !scriptVariables.ascensionBlessingRespecDone && (player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > 1050*4 && player.runeshards > 400000) {
     mirrorTalismanStats = [null, 1, -1, 1, -1, 1]; //Respec to 1 3 5
     respecTalismanConfirm(8);
     scriptVariables.ascensionBlessingRespecDone = true;
@@ -277,6 +262,27 @@ function scriptAutoGameFlow () {
     scriptVariables.actionStep = -1; //A
 
     sLog(1, "Ascended");
+  }
+
+  // Handle doing challenges occasionally (before blessings)
+  if (scriptNoCurrentAction() && (!scriptVariables.ascensionBlessingRespecDone || player.challengecompletions["nine"] === 0) && player.ascensionCounter > 30) {
+    // Do Reincarnation Challenges if particles have changed significantly
+    if (scriptVariables.lastReincChallengeCounter + scriptSettings.flowMinTimeBetweenReincChallenges < player.ascensionCounter && scriptVariables.currentTransChallenge < 0
+    && (player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts * scriptSettings.flowReincChallengePartMulti || player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts + scriptSettings.flowReincChallengePartPlus)) {
+      scriptVariables.lastReincChallengeParts = player.reincarnationPoints.exponent;
+      scriptVariables.lastReincChallengeCounter = player.ascensionCounter;
+      scriptVariables.currentReincChallenge = 0;
+      sLog(6, "Started Reinc Challenges");
+    }
+    // Do Transcension Challenges if particles have changed significantly
+    // TODO: Maybe additional triggers would be useful (rune/talisman changes)
+    if (scriptVariables.lastTransChallengeCounter + scriptSettings.flowMinTimeBetweenTransChallenges < player.ascensionCounter && scriptVariables.currentReincChallenge < 0
+    && (player.reincarnationPoints.exponent > scriptVariables.lastTransChallengeParts * scriptSettings.flowTransChallengePartMulti || player.reincarnationPoints.exponent > scriptVariables.lastTransChallengeParts + scriptSettings.flowTransChallengePartPlus)) {
+      scriptVariables.lastTransChallengeParts = player.reincarnationPoints.exponent;
+      scriptVariables.lastTransChallengeCounter = player.ascensionCounter;
+      scriptVariables.currentTransChallenge = 0;
+      sLog(6, "Started Trans Challenges");
+    }
   }
 
   // Handle particle/challenge pushes
