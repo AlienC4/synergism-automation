@@ -11,7 +11,7 @@ Note that some (or all) features of this script may be seen as cheating by some 
 So when bragging about your achievements you should probably mention that you used a script to do them, to be fair to players who did it all manually.
 I've tried to only use functions that are also directly called by pressing buttons with the same arguments, so hopefully the script will not do anything that the player cant do.
 But sometimes buttons are hidden but the functions still work, so there is no guarantee that the script will not cheat (e.g. in my tests the script bought some talismans I hadn't unlocked yet...)
-Press F12 and paste the script into the Javascript console to use it. Refresh the page or use window.clearInterval(###Interval ID returned after copypaste here###) to get rid of it.
+Go to your Synergism tab, press F12 and paste the script into the Javascript console to use it. Refresh the page or use window.clearInterval(###Interval ID returned after copypaste here###) to get rid of it.
 There is some logging enabled by default, which will show up in the JS console.
 Make a copy of the script and change the settings (everything starting with scriptSettings) to make some simple changes to script behaviour.
 For other changes you will have to edit the actual script code.
@@ -28,6 +28,10 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.6   xx-Aug-20  Moved settings to browser local storage
+- Moved settings to browser local storage. Shouldn't do anything by itself, but a prerequesite to having a useful settings GUI.
+- Added setting for delay before challenges after reincarnation.
+
 1.5   06-Aug-20  AutoRunes improvements and new version optimization
 - Added several AutoRunes settings to customize it
 - Due to some game changes it's currently not possible to split large amounts of offerings efficiently across all runes. Added a limiter setting to keep the script from freezing.
@@ -66,70 +70,81 @@ Initial version of the script. Game version: v1.011 TESTING! Update: July 22, 20
 
 /*
 TODO:
-- Handle 3x8 (gain parts without reincarnation)
+- Option to not do double challenges (trans trans or reinc reinc)
 - Auto Research for pre-roomba?
-- Move settings to browser storage
 - Tampermonkey stuff for automatic script loading
 - Refactor into a looping function to simplify variable names without risking naming conflicts and get rid of the window.setInterval
 - Settings and dashboard GUI
 */
 
-let scriptSettings = {};
 
-// General Script settings
-scriptSettings.autoTurnedOn = true;
-scriptSettings.scriptInterval = 1000;
+
+let scriptSettings = {};
+let scriptDefineSettings = {};
+let tempSetting = {};
+// Settings infrastructure and definitions
+class scriptSetting {
+  constructor(name, defaultValue, description) {
+    this.name = name;
+    this.defaultValue = defaultValue;
+    this.description = description;
+    scriptDefineSettings[name] = this;
+  }
+}
+
+// Settings Definitions and default values
+tempSetting = new scriptSetting("autoTurnedOn", true, "Master Switch for the script.");
+tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds.");
 
 // Toggles for Script features
-scriptSettings.autoLog            = true;  // Does some periodic logging, as long as logLevel is at least 2
-scriptSettings.autoGameFlow       = true;  // Reincarnate, Ascend, do challenges, respec runes
-scriptSettings.autoTalismans      = true;  // Automatically enhances and fortifies talismans and buys Mortuus ant
-scriptSettings.autoChallengeTrans = true;  // Runs Trans challenges, but only if triggered manually or by autoGameFlow
-scriptSettings.autoChallengeReinc = true;  // Runs Reinc challenges, but only if triggered manually or by autoGameFlow
-scriptSettings.autoRunes          = true;  // Automatically levels runes. Saves offerings just before getting some techs and at ant timer < 10 minutes
-scriptSettings.autoReincUpgrades  = true;  // Automatically buys Particle upgrades
-scriptSettings.autoOpenCubes      = false; // Automatically opens all cubes
-scriptSettings.autoPartBuildings  = false; // Automatically buy particle buildings every script interval. For when you don't have c1x7 to c1x9 yet.
+tempSetting = new scriptSetting("autoLog", true, "Does some periodic logging, as long as logLevel is at least 2");
+tempSetting = new scriptSetting("autoGameFlow", true, "Reincarnate, Ascend, do challenges, respec runes");
+tempSetting = new scriptSetting("autoTalismans", true, "Automatically enhances and fortifies talismans and buys Mortuus ant");
+tempSetting = new scriptSetting("autoChallengeTrans", true, "Runs Trans challenges, but only if triggered manually or by autoGameFlow");
+tempSetting = new scriptSetting("autoChallengeReinc", true, "Runs Reinc challenges, but only if triggered manually or by autoGameFlow");
+tempSetting = new scriptSetting("autoRunes", true, "Automatically levels runes. Saves offerings just before getting some techs and at ant timer < 10 minutes");
+tempSetting = new scriptSetting("autoReincUpgrades", true, "Automatically buys Particle upgrades");
+tempSetting = new scriptSetting("autoOpenCubes", false, "Automatically opens all cubes");
+tempSetting = new scriptSetting("autoPartBuildings", false, "Automatically buy particle buildings every script interval. For when you don't have c1x7 to c1x9 yet.");
 
 // Logging Settings
-scriptSettings.logLevel = 7; // How much to log. 10 prints all messages, 0 logs only script start.
-scriptSettings.logInterval = 300; // Logs some general game data to console every X seconds. Logging level needs to be at least 2 for this to work.
+tempSetting = new scriptSetting("logLevel", 7, "How much to log. 10 prints all messages, 0 logs only script start.");
+tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data to console every X seconds. Logging level needs to be at least 2 for this to work.");
 
 // Game flow settings
-scriptSettings.flowReincChallengePartMulti = 1.1; // Start reincarnation challenges only if particle exponent has multiplied at least this much since last time (or since script start)
-scriptSettings.flowReincChallengePartPlus = 1000; // ... if it increased by this much
-scriptSettings.flowMinTimeBetweenReincChallenges = 60; // Minimum Ascension Counter (= realtime) between Reinc challenges
-scriptSettings.flowTransChallengePartMulti = 1.1; // Same as above but for Trans challenges
-scriptSettings.flowTransChallengePartPlus = 1000; // Same
-scriptSettings.flowMinTimeBetweenTransChallenges = 60; // Same
-scriptSettings.flowStartSavingOfferingsRuneLevel = 1000; // Post-respec prim rune level to start saving offerings for respecs
-scriptSettings.flowRespecToBlessingsRuneLevel = 4000; // Post-respec prim rune level to respec into 1 3 5
-scriptSettings.flowPushTalismanLevel = 1; // Minimum Talisman 1 level to start Challenge Pushes
-// false: Do a challenge push with rune respec only if Talisman levels have changed, or when talismans are maxed push when ant levels have changed enough.
-// true: Keep pushing if ant levels change enough, even when talismans are not maxed
-scriptSettings.flowKeepPushingWithoutMaxedTalis = true;
-scriptSettings.flowPushAntChange = 300; // How much the sum of ant generator levels (excluding first one) needs to change to start another push
-scriptSettings.flowAscendAtC10Completions = 1; // Ascend only if C10 has been completed at least this many times
-scriptSettings.flowAscendImmediately = true; // Ascend once the target C10 completions have been reached, ignoring all other checks. May ascend without first respeccing talismans!
+tempSetting = new scriptSetting("flowInitialWaitBeforeChallenges", 10, "How long to wait after ascension before challenges can be started");
+tempSetting = new scriptSetting("flowReincChallengePartMulti", 1.1, "Start reincarnation challenges only if particle exponent has multiplied at least this much since last time (or since script start)");
+tempSetting = new scriptSetting("flowReincChallengePartPlus", 1000, "... if it increased by this much");
+tempSetting = new scriptSetting("flowMinTimeBetweenReincChallenges", 60, "Minimum Ascension Counter (= realtime) between Reinc challenges");
+tempSetting = new scriptSetting("flowTransChallengePartMulti", 1.1, "Same as above but for Trans challenges");
+tempSetting = new scriptSetting("flowTransChallengePartPlus", 1000, "Same");
+tempSetting = new scriptSetting("flowMinTimeBetweenTransChallenges", 60, "Same");
+tempSetting = new scriptSetting("flowStartSavingOfferingsRuneLevel", 1000, "Post-respec prim rune level to start saving offerings for respecs");
+tempSetting = new scriptSetting("flowRespecToBlessingsRuneLevel", 4000, "Post-respec prim rune level to respec into 1 3 5");
+tempSetting = new scriptSetting("flowPushTalismanLevel", 1, "Minimum Talisman 1 level to start Challenge Pushes");
+tempSetting = new scriptSetting("flowKeepPushingWithoutMaxedTalis", true, "false: Do a challenge push with rune respec only if Talisman levels have changed, or when talismans are maxed push when ant levels have changed enough. true: Keep pushing if ant levels change enough, even when talismans are not maxed");
+tempSetting = new scriptSetting("flowPushAntChange", 300, "How much the sum of ant generator levels (excluding first one) needs to change to start another push");
+tempSetting = new scriptSetting("flowAscendAtC10Completions", 1, "Ascend only if C10 has been completed at least this many times");
+tempSetting = new scriptSetting("flowAscendImmediately", true, "Ascend once the target C10 completions have been reached, ignoring all other checks. May ascend without first respeccing talismans!");
 
 // Talisman settings
-scriptSettings.talismanInterval = 10000; // How often to buy Talismans. Interval in Milliseconds.
-scriptSettings.talismansEnhance = [1, 2, 3, 4, 6]; // Which talismans to enhance. All talismans are fortified.
+tempSetting = new scriptSetting("talismanInterval", 10000, "How often to buy Talismans. Interval in Milliseconds.");
+tempSetting = new scriptSetting("talismansEnhance", [1, 2, 3, 4, 6], "Which talismans to enhance. All talismans are fortified.");
 
 // Auto Trans Challenge settings
-scriptSettings.maxTransChallengeDuration = 2; // How long to wait for completion of trans challenges (trans counter)
+tempSetting = new scriptSetting("maxTransChallengeDuration", 2, "How long to wait for completion of trans challenges (trans counter)");
 
 // Auto Reinc Challenge settings
-scriptSettings.maxReincChallengeDuration = 10; // How long to wait for completion of reinc challenges (reinc counter)
+tempSetting = new scriptSetting("maxReincChallengeDuration", 10, "How long to wait for completion of reinc challenges (reinc counter)");
 
 // Auto Runes settings
-scriptSettings.runeCaps = [5000, 5000, 5000, 5000, 5000]; // Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)
-scriptSettings.runeWeights = [1, 2, 1, 3, 4]; // Weights for how many offerings to put into each rune
-scriptSettings.runeAntTimer = 10; // Will not spend offerings until the sacrifice timer has reached this amount of seconds
-scriptSettings.runeTech5x3Wait = 1; // Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.
-scriptSettings.runeTech4x16Wait = 1; // Same but for 4x16
-scriptSettings.runeTech4x17Wait = 1; // Same but for 4x17
-scriptSettings.runeSpendingCap = 1e7; // Spend at most this many offerings at once to keep the script from lagging
+tempSetting = new scriptSetting("runeCaps", [5000, 5000, 5000, 5000, 5000], "Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)");
+tempSetting = new scriptSetting("runeWeights", [1, 2, 1, 3, 4], "Weights for how many offerings to put into each rune");
+tempSetting = new scriptSetting("runeAntTimer", 10, "Will not spend offerings until the sacrifice timer has reached this amount of seconds");
+tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.");
+tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16");
+tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17");
+tempSetting = new scriptSetting("runeSpendingCap", 1e7, "Spend at most this many offerings at once to keep the script from lagging");
 
 // Variables, don't change manually
 let scriptVariables = {};
@@ -151,6 +166,60 @@ scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0
 // checks if Talismans 1 is 1 3 5
 scriptVariables.ascensionBlessingRespecDone = player.talismanOne.reduce(((result,value,index)=>{let checkArray = [null, 1, -1, 1, -1, 1]; return value === checkArray[index] && result;}), true); //A
 scriptVariables.lastLogCounter = 0; //A
+
+// Settings infrastructure
+function scriptSettingsSave() {
+  window.localStorage.setItem('galefuryScriptSettings', JSON.stringify(scriptSettings));
+}
+
+// Prints scriptSettings to console as a JSON string
+function scriptSettingsExport() {
+  console.log(JSON.stringify(scriptSettings));
+}
+
+// Sets defined settings that are not found in the scriptSettings object to default values
+function scriptSettingsFillDefaults() {
+  if (!scriptSettings) scriptSettings = {initial: "initial"};
+  Object.keys(scriptDefineSettings).forEach(function(key,index) {
+    if (!(scriptSettings.hasOwnProperty(key))) {
+      scriptSettings[key] = scriptDefineSettings[key].defaultValue;
+    }
+  });
+}
+
+// Removes any settings that are not in the settings definition
+function scriptSettingsClean() {
+  Object.keys(scriptSettings).forEach(function(key,index) {
+    if (!(scriptDefineSettings.hasOwnProperty(key))) {
+      delete scriptSettings[key];
+    }
+  });
+}
+
+// Imports settings from a JSON String, sets any defined but not imported settings to default value
+function scriptSettingsImport (settings) {
+  scriptSettings = JSON.parse(settings);
+  scriptSettingsFillDefaults();
+  scriptSettingsSave();
+}
+
+// Loads script settings from browser local storage
+function scriptSettingsLoad() {
+  scriptSettingsImport(window.localStorage.getItem('galefuryScriptSettings'));
+}
+
+// Removes script settings from browser local storage
+function scriptSettingsRemoveStorage() {
+  window.localStorage.removeItem('galefuryScriptSettings');
+}
+
+// Resets script settings to default values
+function scriptSettingsResetToDefault() {
+  scriptSettings = {};
+  scriptSettingsFillDefaults();
+  scriptSettingsClean();
+  scriptSettingsSave();
+}
 
 // General Helper functions
 function sLog(level, text) {
@@ -288,7 +357,7 @@ function scriptAutoGameFlow () {
   }
 
   // Handle doing challenges occasionally (before blessings)
-  if (scriptNoCurrentAction() && (!scriptVariables.ascensionBlessingRespecDone || player.challengecompletions["nine"] === 0) && player.ascensionCounter > 30) {
+  if (scriptNoCurrentAction() && (!scriptVariables.ascensionBlessingRespecDone || player.challengecompletions["nine"] === 0) && player.ascensionCounter > scriptSettings.flowInitialWaitBeforeChallenges) {
     // Do Reincarnation Challenges if particles have changed significantly
     if (scriptVariables.lastReincChallengeCounter + scriptSettings.flowMinTimeBetweenReincChallenges < player.ascensionCounter && scriptVariables.currentTransChallenge < 0
     && (player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts * scriptSettings.flowReincChallengePartMulti || player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts + scriptSettings.flowReincChallengePartPlus)) {
@@ -644,6 +713,7 @@ function scriptAutoAll () {
   }
 }
 
+scriptSettingsLoad()
 sLog(0, "Starting Script");
 resetCheck('challenge');
 resetCheck('reincarnationchallenge');
