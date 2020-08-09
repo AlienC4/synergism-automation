@@ -198,8 +198,13 @@ function scriptSettingsClean() {
 
 // Imports settings from a JSON String, sets any defined but not imported settings to default value
 function scriptSettingsImport (settings) {
-  scriptSettings = JSON.parse(settings);
+  if (settings != null) {
+    scriptSettings = JSON.parse(settings);
+  } else {
+    scriptSettings = {};
+  }
   scriptSettingsFillDefaults();
+  scriptSettingsClean();
   scriptSettingsSave();
 }
 
