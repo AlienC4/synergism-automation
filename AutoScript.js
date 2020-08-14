@@ -14,8 +14,7 @@ But sometimes buttons are hidden but the functions still work, so there is no gu
 Go to your Synergism tab, press F12 and paste the script into the Javascript console to use it, then press enter. Refresh the page or use window.clearInterval(###Interval ID returned after copypaste here###) to get rid of it.
 Step by step instructions: Click into this text, Ctrl-A, Ctrl-C, switch to synergism window, F12 (depending on browser), click into the javascript console prompt, Ctrl-V, Enter
 There is some logging enabled by default, which will show up in the JS console.
-Make a copy of the script and change the settings (everything starting with scriptSettings) to make some simple changes to script behaviour.
-For other changes you will have to edit the actual script code.
+If it worked the script GUI should show up at the bottom of the page. Settings can be changed through the GUI, for other changes you will have to edit the script.
 
 Feel free to ping me with suggestions for improvements to the script on the Synergism Discord. As long as I think they will actually be an improvement and not much work I might put them in.
 As I am not an experienced javascript developer I'm especially interested in suggestions regarding the script architecture and taking advantage of neat Javascript features. I haven't used classes so far because it seemed overkill.
