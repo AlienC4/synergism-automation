@@ -11,7 +11,8 @@ Note that some (or all) features of this script may be seen as cheating by some 
 So when bragging about your achievements you should probably mention that you used a script to do them, to be fair to players who did it all manually.
 I've tried to only use functions that are also directly called by pressing buttons with the same arguments, so hopefully the script will not do anything that the player cant do.
 But sometimes buttons are hidden but the functions still work, so there is no guarantee that the script will not cheat (e.g. in my tests the script bought some talismans I hadn't unlocked yet...)
-Go to your Synergism tab, press F12 and paste the script into the Javascript console to use it. Refresh the page or use window.clearInterval(###Interval ID returned after copypaste here###) to get rid of it.
+Go to your Synergism tab, press F12 and paste the script into the Javascript console to use it, then press enter. Refresh the page or use window.clearInterval(###Interval ID returned after copypaste here###) to get rid of it.
+Step by step instructions: Click into this text, Ctrl-A, Ctrl-C, switch to synergism window, F12 (depending on browser), click into the javascript console prompt, Ctrl-V, Enter
 There is some logging enabled by default, which will show up in the JS console.
 Make a copy of the script and change the settings (everything starting with scriptSettings) to make some simple changes to script behaviour.
 For other changes you will have to edit the actual script code.
@@ -28,9 +29,10 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
-1.6   xx-Aug-20  Moved settings to browser local storage
-- Moved settings to browser local storage. Shouldn't do anything by itself, but a prerequesite to having a useful settings GUI.
-- Added setting for delay before challenges after reincarnation.
+1.6   14-Aug-20  Settings GUI and settings moved to browser local storage
+- Moved settings to browser local storage. They are now saved on change and restored when you load the script.
+- Added settings GUI.
+- Added setting to configure delay before challenges after reincarnation.
 
 1.5   06-Aug-20  AutoRunes improvements and new version optimization
 - Added several AutoRunes settings to customize it
@@ -71,10 +73,14 @@ Initial version of the script. Game version: v1.011 TESTING! Update: July 22, 20
 /*
 TODO:
 - Option to not do double challenges (trans trans or reinc reinc)
+- Log current speedup and maybe other game stats
 - Auto Research for pre-roomba?
 - Tampermonkey stuff for automatic script loading
 - Refactor into a looping function to simplify variable names without risking naming conflicts and get rid of the window.setInterval
-- Settings and dashboard GUI
+- Settings and dashboard GUI part 2
+  * 
+  * Build HUD for script stats
+  * Move log to a textfield
 */
 
 
@@ -84,67 +90,74 @@ let scriptDefineSettings = {};
 let tempSetting = {};
 // Settings infrastructure and definitions
 class scriptSetting {
-  constructor(name, defaultValue, description) {
+  constructor(name, defaultValue, description, label, section, column, order, spaceafter = false) {
     this.name = name;
     this.defaultValue = defaultValue;
     this.description = description;
+    this.label = label;
+    this.section = section;
+    this.column = column;
+    this.order = order;
     scriptDefineSettings[name] = this;
   }
 }
 
 // Settings Definitions and default values
-tempSetting = new scriptSetting("autoTurnedOn", true, "Master Switch for the script.");
-tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds.");
+tempSetting = new scriptSetting("autoTurnedOn", true, "Master Switch for the script.", "Master Switch", "main", "toggles", 1, true);
+tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds. Only refreshed on reload.", "Script Interval", "main", "toggles", 150);
 
 // Toggles for Script features
-tempSetting = new scriptSetting("autoLog", true, "Does some periodic logging, as long as logLevel is at least 2");
-tempSetting = new scriptSetting("autoGameFlow", true, "Reincarnate, Ascend, do challenges, respec runes");
-tempSetting = new scriptSetting("autoTalismans", true, "Automatically enhances and fortifies talismans and buys Mortuus ant");
-tempSetting = new scriptSetting("autoChallengeTrans", true, "Runs Trans challenges, but only if triggered manually or by autoGameFlow");
-tempSetting = new scriptSetting("autoChallengeReinc", true, "Runs Reinc challenges, but only if triggered manually or by autoGameFlow");
-tempSetting = new scriptSetting("autoRunes", true, "Automatically levels runes. Saves offerings just before getting some techs and at ant timer < 10 minutes");
-tempSetting = new scriptSetting("autoReincUpgrades", true, "Automatically buys Particle upgrades");
-tempSetting = new scriptSetting("autoOpenCubes", false, "Automatically opens all cubes");
-tempSetting = new scriptSetting("autoPartBuildings", false, "Automatically buy particle buildings every script interval. For when you don't have c1x7 to c1x9 yet.");
+tempSetting = new scriptSetting("autoLog", true, "Does some periodic logging, as long as logLevel is at least 2", "Auto Log", "main", "toggles", 10);
+tempSetting = new scriptSetting("autoGameFlow", false, "Reincarnate, Ascend, do challenges, respec runes", "Auto Flow", "main", "toggles", 20);
+tempSetting = new scriptSetting("autoTalismans", false, "Automatically enhances and fortifies talismans and buys Mortuus ant", "Auto Talismans", "main", "toggles", 30);
+tempSetting = new scriptSetting("autoChallengeTrans", false, "Runs Trans challenges, but only if triggered manually or by autoGameFlow", "Auto Challenge Trans", "main", "toggles", 40);
+tempSetting = new scriptSetting("autoChallengeReinc", false, "Runs Reinc challenges, but only if triggered manually or by autoGameFlow", "Auto Challenge Reinc", "main", "toggles", 50);
+tempSetting = new scriptSetting("autoRunes", false, "Automatically levels runes. Saves offerings just before getting some techs and at ant timer < 10 minutes", "Auto Runes", "main", "toggles", 60);
+tempSetting = new scriptSetting("autoReincUpgrades", false, "Automatically buys Particle upgrades", "Auto Particle Upgrades", "main", "toggles", 70);
+tempSetting = new scriptSetting("autoOpenCubes", false, "Automatically opens all cubes", "Auto Open Cubes", "main", "toggles", 80);
+tempSetting = new scriptSetting("autoPartBuildings", false, "Automatically buy particle buildings every script interval. For when you don't have c1x7 to c1x9 yet.", "Auto Particle Buildings", "main", "toggles", 90, true);
 
 // Logging Settings
-tempSetting = new scriptSetting("logLevel", 7, "How much to log. 10 prints all messages, 0 logs only script start.");
-tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data to console every X seconds. Logging level needs to be at least 2 for this to work.");
+tempSetting = new scriptSetting("logLevel", 10, "How much to log. 10 prints all messages, 0 logs only script start.", "Log Level", "main", "log", 50);
+tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data to console every X seconds. Logging level needs to be at least 2 for this to work.", "Log Interval", "main", "log", 60);
 
 // Game flow settings
-tempSetting = new scriptSetting("flowInitialWaitBeforeChallenges", 10, "How long to wait after ascension before challenges can be started");
-tempSetting = new scriptSetting("flowReincChallengePartMulti", 1.1, "Start reincarnation challenges only if particle exponent has multiplied at least this much since last time (or since script start)");
-tempSetting = new scriptSetting("flowReincChallengePartPlus", 1000, "... if it increased by this much");
-tempSetting = new scriptSetting("flowMinTimeBetweenReincChallenges", 60, "Minimum Ascension Counter (= realtime) between Reinc challenges");
-tempSetting = new scriptSetting("flowTransChallengePartMulti", 1.1, "Same as above but for Trans challenges");
-tempSetting = new scriptSetting("flowTransChallengePartPlus", 1000, "Same");
-tempSetting = new scriptSetting("flowMinTimeBetweenTransChallenges", 60, "Same");
-tempSetting = new scriptSetting("flowStartSavingOfferingsRuneLevel", 1000, "Post-respec prim rune level to start saving offerings for respecs");
-tempSetting = new scriptSetting("flowRespecToBlessingsRuneLevel", 4000, "Post-respec prim rune level to respec into 1 3 5");
-tempSetting = new scriptSetting("flowPushTalismanLevel", 1, "Minimum Talisman 1 level to start Challenge Pushes");
-tempSetting = new scriptSetting("flowKeepPushingWithoutMaxedTalis", true, "false: Do a challenge push with rune respec only if Talisman levels have changed, or when talismans are maxed push when ant levels have changed enough. true: Keep pushing if ant levels change enough, even when talismans are not maxed");
-tempSetting = new scriptSetting("flowPushAntChange", 300, "How much the sum of ant generator levels (excluding first one) needs to change to start another push");
-tempSetting = new scriptSetting("flowAscendAtC10Completions", 1, "Ascend only if C10 has been completed at least this many times");
-tempSetting = new scriptSetting("flowAscendImmediately", true, "Ascend once the target C10 completions have been reached, ignoring all other checks. May ascend without first respeccing talismans!");
+tempSetting = new scriptSetting("flowAscendAtC10Completions", 1, "Ascend only if C10 has been completed at least this many times", "C10 for ascend", "flow", "ascend", 10);
+tempSetting = new scriptSetting("flowAscendImmediately", false, "Ascend once the target C10 completions have been reached, ignoring all other checks. May ascend without first respeccing talismans!", "Ascend ASAP", "flow", "ascend", 20);
+
+tempSetting = new scriptSetting("flowInitialWaitBeforeChallenges", 10, "How long to wait after ascension before challenges can be started", "Wait after Ascension", "flow", "challenges", 10);
+tempSetting = new scriptSetting("flowReincChallengePartMulti", 1.1, "Start reincarnation challenges only if particle exponent has multiplied at least this much since last time (or since script start)", "Reinc Particles Multi", "flow", "challenges", 20);
+tempSetting = new scriptSetting("flowReincChallengePartPlus", 1000, "Start reincarnation challenges only if particle exponened has increased at least this much (only one of the conditions needs to be true)", "Reinc Particles Plus", "flow", "challenges", 30);
+tempSetting = new scriptSetting("flowMinTimeBetweenReincChallenges", 60, "Minimum Ascension Counter (= realtime) between Reinc challenges", "Time between Reinc", "flow", "challenges", 40, true);
+tempSetting = new scriptSetting("flowTransChallengePartMulti", 1.1, "Start transcension challenges only if particle exponent has multiplied at least this much since last time (or since script start)", "Trans Particles Multi", "flow", "challenges", 50);
+tempSetting = new scriptSetting("flowTransChallengePartPlus", 1000, "Same as reinc", "Trans Particles Plus", "flow", "challenges", 60);
+tempSetting = new scriptSetting("flowMinTimeBetweenTransChallenges", 60, "Same as reinc", "Time between Trans", "flow", "challenges", 70);
+
+tempSetting = new scriptSetting("flowStartSavingOfferingsRuneLevel", 1000, "Post-respec prism rune level to start saving offerings for respecs", "Start Saving Offerings Level", "flow", "blessings", 10);
+tempSetting = new scriptSetting("flowRespecToBlessingsRuneLevel", 4000, "Post-respec prism rune level to respec into 1 3 5", "Respec to 135 Level", "flow", "blessings", 10);
+tempSetting = new scriptSetting("flowPushTalismanLevel", 1, "Minimum Talisman 1 level to start Challenge Pushes", "Minimum Talisman 1 enhance for pushing", "flow", "blessings", 10);
+tempSetting = new scriptSetting("flowKeepPushingWithoutMaxedTalis", false, "false: Do a challenge push with rune respec only if Talisman levels have changed, or when talismans are maxed push when ant levels have changed enough. true: Keep pushing if ant levels change enough, even when talismans are not maxed", "Keep pushing without Talisman enhance", "flow", "blessings", 10);
+tempSetting = new scriptSetting("flowPushAntChange", 300, "How much the sum of ant generator levels (excluding first one) needs to change to start another push", "Ant change for push", "flow", "blessings", 10);
 
 // Talisman settings
-tempSetting = new scriptSetting("talismanInterval", 10000, "How often to buy Talismans. Interval in Milliseconds.");
-tempSetting = new scriptSetting("talismansEnhance", [1, 2, 3, 4, 6], "Which talismans to enhance. All talismans are fortified.");
+tempSetting = new scriptSetting("talismanInterval", 10000, "How often to buy Talismans. Interval in Milliseconds.", "Talisman interval", "runes", "talismans", 10);
+tempSetting = new scriptSetting("talismansEnhance", [true, true, false, false, false, true, false], "Which talismans to enhance. All talismans are fortified.", "Enhance Talisman X", "runes", "talismans", 20); // TODO: change to boolean!
 
 // Auto Trans Challenge settings
-tempSetting = new scriptSetting("maxTransChallengeDuration", 2, "How long to wait for completion of trans challenges (trans counter)");
+tempSetting = new scriptSetting("maxTransChallengeDuration", 2, "How long to wait for completion of trans challenges (trans counter)", "Max duration", "challenges", "trans", 10);
 
 // Auto Reinc Challenge settings
-tempSetting = new scriptSetting("maxReincChallengeDuration", 10, "How long to wait for completion of reinc challenges (reinc counter)");
+tempSetting = new scriptSetting("maxReincChallengeDuration", 10, "How long to wait for completion of reinc challenges (reinc counter)", "Max duration", "challenges", "reinc", 10);
 
 // Auto Runes settings
-tempSetting = new scriptSetting("runeCaps", [5000, 5000, 5000, 5000, 5000], "Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)");
-tempSetting = new scriptSetting("runeWeights", [1, 2, 1, 3, 4], "Weights for how many offerings to put into each rune");
-tempSetting = new scriptSetting("runeAntTimer", 10, "Will not spend offerings until the sacrifice timer has reached this amount of seconds");
-tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.");
-tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16");
-tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17");
-tempSetting = new scriptSetting("runeSpendingCap", 1e7, "Spend at most this many offerings at once to keep the script from lagging");
+tempSetting = new scriptSetting("runeCaps", [5000, 5000, 5000, 5000, 5000], "Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)", "Rune caps", "runes", "runes", 10);
+tempSetting = new scriptSetting("runeWeights", [1, 2, 1, 3, 4], "Weights for how many offerings to put into each rune", "Rune weights", "runes", "runes", 20, true);
+tempSetting = new scriptSetting("runeAntTimer", 10, "Will not spend offerings until the sacrifice timer has reached this amount of seconds", "Minimum Ant timer", "runes", "runes", 30);
+tempSetting = new scriptSetting("runeSpendingCap", 1e7, "Spend at most this many offerings at once to keep the script from lagging", "Offering spending cap", "runes", "runes", 40, true);
+tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.", "5x3 wait", "runes", "runes", 50);
+tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16", "4x16 wait", "runes", "runes", 60);
+tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17", "4x17 wait", "runes", "runes", 70);
+
 
 // Variables, don't change manually
 let scriptVariables = {};
@@ -166,6 +179,8 @@ scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0
 // checks if Talismans 1 is 1 3 5
 scriptVariables.ascensionBlessingRespecDone = player.talismanOne.reduce(((result,value,index)=>{let checkArray = [null, 1, -1, 1, -1, 1]; return value === checkArray[index] && result;}), true); //A
 scriptVariables.lastLogCounter = 0; //A
+scriptVariables.displayInitialized = false;
+scriptVariables.settingsTabs = [];
 
 // Settings infrastructure
 function scriptSettingsSave() {
@@ -183,6 +198,7 @@ function scriptSettingsFillDefaults() {
   Object.keys(scriptDefineSettings).forEach(function(key,index) {
     if (!(scriptSettings.hasOwnProperty(key))) {
       scriptSettings[key] = scriptDefineSettings[key].defaultValue;
+      console.log("Setting " + key + " set to default Value " + scriptDefineSettings[key].defaultValue);
     }
   });
 }
@@ -192,6 +208,7 @@ function scriptSettingsClean() {
   Object.keys(scriptSettings).forEach(function(key,index) {
     if (!(scriptDefineSettings.hasOwnProperty(key))) {
       delete scriptSettings[key];
+      console.log("Setting " + key + " deleted");
     }
   });
 }
@@ -216,6 +233,7 @@ function scriptSettingsLoad() {
 // Removes script settings from browser local storage
 function scriptSettingsRemoveStorage() {
   window.localStorage.removeItem('galefuryScriptSettings');
+  console.log("Script settings removed from local storage");
 }
 
 // Resets script settings to default values
@@ -224,6 +242,221 @@ function scriptSettingsResetToDefault() {
   scriptSettingsFillDefaults();
   scriptSettingsClean();
   scriptSettingsSave();
+}
+
+// Creates a HTML Element from a String
+function scriptCreateElement(htmlString) {
+  var div = document.createElement('div');
+  div.innerHTML = htmlString.trim();
+
+  // Change this to div.childNodes to support multiple top-level nodes
+  return div.firstElementChild;
+}
+
+function $(x) {return document.getElementById(x);}
+
+// Event Handler for changing a settings checkbox
+function scriptToggleCheckbox(setting, index = -1) {
+  if (index === -1) {
+    if (event.target.checked) {
+      scriptSettings[setting] = true;
+    } else {
+      scriptSettings[setting] = false;
+    }
+  } else {
+    if (event.target.checked) {
+      scriptSettings[setting][index] = true;
+    } else {
+      scriptSettings[setting][index] = false;
+    }
+  }
+  scriptSettingsSave();
+}
+
+// Returns a label + checkbox element tied to the given setting
+function scriptCreateCheckbox(id, setting, label, mouseover, arrayCount = 0) {
+  if (arrayCount === 0) {
+    let element = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'" for = "'+id+'">'+label+'</label>'+
+                  '<input type="checkbox" id="'+id+'" class = "scriptsettings-checkbox" title="'+mouseover+'"'+(scriptSettings[setting]?' checked':'')+
+                  ' onchange = "scriptToggleCheckbox(\''+setting+'\')"></div>';
+    return scriptCreateElement(element);
+  } else {
+    let element = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'">'+label+'</label><div class = "scriptsettings-arraycontainer-checkbox">'
+    for (let i = 0; i < arrayCount; i++) {
+      element += '<input type="checkbox" id="'+id+'-'+i+'" class = "scriptsettings-checkbox" title="'+mouseover+'"'+(scriptSettings[setting][i]?' checked':'')+
+                  ' onchange = "scriptToggleCheckbox(\''+setting+'\', '+i+')">'
+    }
+    element += '</div></div>';
+    return scriptCreateElement(element);
+  }
+}
+
+// Event Handler for changing a number field
+function scriptChangeNumberField(setting, index = -1) {
+  if (index === -1) {
+    scriptSettings[setting] = Number(event.target.value);
+  } else {
+    scriptSettings[setting][index] = Number(event.target.value);
+  }
+  scriptSettingsSave();
+}
+
+// Returns a label + number field tied to the given setting
+function scriptCreateNumberField(id, setting, label, mouseover, arrayCount = 0) {
+  if (arrayCount === 0) {
+    let element = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'" for = "'+id+'">'+label+'</label>'+
+                  '<input type="number" id="'+id+'" class = "scriptsettings-numberfield" title="'+mouseover+'" value = "'+scriptSettings[setting]+'" '+
+                  'onchange = "scriptChangeNumberField(\''+setting+'\')"></div>';
+    return scriptCreateElement(element);
+  } else {
+    let element = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'">'+label+'</label><div class = "scriptsettings-arraycontainer-number">'
+    for (let i = 0; i < arrayCount; i++) {
+      element += '<input type="number" id="'+id+'-'+i+'" class = "scriptsettings-numberfield" title="'+mouseover+'" value = "'+scriptSettings[setting][i]+'" '+
+                  'style = "width: '+(95/arrayCount)+'%" '+
+                  'onchange = "scriptChangeNumberField(\''+setting+'\', '+i+')">'
+    }
+    element += '</div></div>';
+    return scriptCreateElement(element);
+  }
+}
+
+// Creates an empty settings column
+function scriptCreateSettingsColumn(id, width, heading) {
+  let element = '<div id = "'+id+'" class=scriptsettings-column style = "width: '+width+'"><p class="scriptsettings-column-heading script-para">'+heading+'</p></div>';
+  return scriptCreateElement(element);
+}
+
+// Event Handler for settings tab buttons
+function scriptChangeSettingsTab(tab) {
+  for (let i = 0; i < scriptVariables.settingsTabs.length; i++) {
+    if (scriptVariables.settingsTabs[i] === tab) {
+      $(scriptVariables.settingsTabs[i]).style.display = 'flex';
+      $(scriptVariables.settingsTabs[i]+"-headerbutton").style.backgroundColor = 'darkred';
+    } else {
+      $(scriptVariables.settingsTabs[i]).style.display = 'none';
+      $(scriptVariables.settingsTabs[i]+"-headerbutton").style.backgroundColor = 'black';
+    }
+  }
+}
+
+// Creates an empty settings section with header button
+function scriptCreateSettingsSection(id, name, container, header) {
+  // Create header button
+  $(header).append(scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" onclick = "scriptChangeSettingsTab(\''+id+'\')" value = "'+name+'">'));
+  
+  // Create div
+  $(container).append(scriptCreateElement('<div id = "'+id+'" class = "script-section"></div>'));
+  
+  // Append to tabs list
+  scriptVariables.settingsTabs.push(id);
+}
+
+// Adds a single setting to its section (ignores order)
+function scriptAddOneSettingToSections(setting) {
+  let arrayCount = 0;
+  let datatype = typeof scriptDefineSettings[setting].defaultValue;
+  if (datatype === "object") {
+    datatype = typeof scriptDefineSettings[setting].defaultValue[0];
+    arrayCount = scriptDefineSettings[setting].defaultValue.length;
+  }
+  
+  let element;
+  switch (datatype) {
+    case "number": element = scriptCreateNumberField("scriptsetting-"+setting, setting, scriptDefineSettings[setting].label, scriptDefineSettings[setting].description, arrayCount); break;
+    case "boolean": element = scriptCreateCheckbox("scriptsetting-"+setting, setting, scriptDefineSettings[setting].label, scriptDefineSettings[setting].description, arrayCount); break;
+    default: console.error("Data Type "+datatype+" of setting "+setting+" is not compatible!"); return;
+  }
+  
+  let col = $("script-settings-"+scriptDefineSettings[setting].section+"-"+scriptDefineSettings[setting].column);
+  if (col) {
+    col.append(element);
+  } else {
+    console.error("Section/Column "+scriptDefineSettings[setting].section+"/"+scriptDefineSettings[setting].column+" for setting "+setting+" not found!");
+  }
+}
+
+// Adds all the defined settings to the sections
+function scriptAddSettingsToSections() {
+  let sorted = Object.keys(scriptDefineSettings).sort((a, b)=>(scriptDefineSettings[a].order - scriptDefineSettings[b].order));
+  for (i = 0; i < sorted.length; i++) {
+    scriptAddOneSettingToSections(sorted[i]);
+  }
+}
+
+function scriptInitializeDisplay() {
+  let body = $('settings').parentElement.parentElement;
+  if (body) {
+    body.append(scriptCreateElement('<div id="script-settings" style="color: white; position: absolute; top: 720px; margin-left: 20px; min-width: 1250px; max-width: 1400px;"></div>'));
+    
+    // Insert Stylesheet
+    let style = document.createElement('style');
+    style.innerHTML =
+      '.script-para {'+
+        'margin-block-start: 1px; margin-block-end: 1px;'+
+      '}'+
+      '.script-header {'+
+        'display:flex; flex-flow: row nowrap; justify-content: flex-start;'+
+      '}'+
+      '.scriptsettings-header-button {'+
+        'color: white; background-color: black; border: 1px solid purple; padding: 2px'+
+      '}'+
+      '.script-section {'+
+        'display:none; flex-flow: row nowrap; justify-content: space-between; width = 100%;'+
+      '}'+
+    	'.script-heading {' +
+    		'color: purple;' +
+        'background-color: #e5e5e5;'+
+      '}'+
+      '.scriptsettings-column {'+
+        'display:flex; flex-flow: column nowrap; justify-content: flex-start; padding: 2px;'+
+      '}'+
+      '.scriptsettings-column-heading {'+
+        'color: darkorchid'+
+      '}'+
+      '.scriptsettings-label {'+
+        'min-width: 100px; white-space:nowrap;'+
+      '}'+
+      '.scriptsettings-arraycontainer-checkbox {'+
+        'width: 40%; display: flex; justify-content: space-between;'+
+      '}'+
+      '.scriptsettings-checkbox {'+
+      '}'+
+      '.scriptsettings-arraycontainer-number {'+
+        'width: 60%; display: flex; justify-content: space-between;'+
+      '}'+
+      '.scriptsettings-numberfield {'+
+        'background-color: #202020; color: white; max-width: 100px'+
+      '}'+
+      '.scriptsettings-container {'+
+        'display:flex; justify-content: space-between;'+
+    	'}';
+    let ref = document.querySelector('script');
+    ref.parentNode.insertBefore(style, ref);
+    
+    // Insert script settings header
+    $('script-settings').append(scriptCreateElement('<div id="script-settings-header" class="script-header"><p class = "script-heading script-para" style = "margin-right: 3px; padding-left: 2px; padding-right: 2px">Script Settings</p></div>'));
+    
+    // Insert script settings sections
+    scriptCreateSettingsSection("script-settings-main", "Main", "script-settings", "script-settings-header");
+    $('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-info', '40%', 'Info'));
+    $('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-log', '40%', 'Log'));
+    $('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-toggles', '20%', 'Toggles'));
+    scriptCreateSettingsSection("script-settings-flow", "Flow", "script-settings", "script-settings-header");
+    $('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-ascend', '22%', 'Ascension'));
+    $('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-challenges', '39%', 'Challenges'));
+    $('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-blessings', '39%', 'Talismans, Blessings & Pushing'));
+    scriptCreateSettingsSection("script-settings-runes", "Runes & Talismans", "script-settings", "script-settings-header");
+    $('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-runes', '40%', 'Runes'));
+    $('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-talismans', '40%', 'Talismans'));
+    scriptCreateSettingsSection("script-settings-challenges", "Challenges", "script-settings", "script-settings-header");
+    $('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-trans', '40%', 'Transcension Challenges'));
+    $('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-reinc', '40%', 'Reincarnation Challenges'));
+    
+    scriptAddSettingsToSections();
+    scriptChangeSettingsTab("script-settings-main");
+    
+    scriptVariables.displayInitialized = true;
+  }
 }
 
 // General Helper functions
@@ -270,8 +503,8 @@ function scriptAutoLog() {
 
 // Game Flow helper functions
 function scriptCheckTalismansMaxed() {
-  for (let i = 0; i < scriptSettings.talismansEnhance.length; i++) {
-    if (player.talismanRarity[scriptSettings.talismansEnhance[i]] < 6) return false;
+  for (let i = 0; i < 7; i++) {
+    if (player.talismanRarity[i+1] < 6 && scriptSettings.talismansEnhance[i]) return false;
   }
   return true;
 }
@@ -506,7 +739,7 @@ function scriptAutoTalismans () {
 	    if (!player.shopUpgrades.talismanBought) continue;
 	  }
 
-	  if (scriptSettings.talismansEnhance.includes(i)) {
+	  if (scriptSettings.talismansEnhance[i-1]) {
 	    buyTalismanEnhance(i);
 	  }
 	  buyTalismanLevels(i);
@@ -705,6 +938,7 @@ function scriptAutoPartBuildings() {
 
 // Calls all other automator functions if they are turned on
 function scriptAutoAll () {
+  if (!(scriptVariables.displayInitialized)) scriptInitializeDisplay();
   if (scriptSettings.autoTurnedOn) {
     if (scriptSettings.autoLog) scriptAutoLog();
     if (scriptSettings.autoGameFlow) scriptAutoGameFlow();
