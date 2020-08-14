@@ -29,6 +29,9 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.6.1 14-Aug-20  Fix GUI for Firefox
+- GUI works now in Firefox
+
 1.6   14-Aug-20  Settings GUI and settings moved to browser local storage
 - Moved settings to browser local storage. They are now saved on change and restored when you load the script.
 - Added settings GUI.
@@ -72,15 +75,19 @@ Initial version of the script. Game version: v1.011 TESTING! Update: July 22, 20
 
 /*
 TODO:
-- Option to not do double challenges (trans trans or reinc reinc)
+- Option to limit each challenge completions
 - Log current speedup and maybe other game stats
 - Auto Research for pre-roomba?
 - Tampermonkey stuff for automatic script loading
 - Refactor into a looping function to simplify variable names without risking naming conflicts and get rid of the window.setInterval
+- Add settings save version as a hidden setting. Reset changed settings if needed and print a log message about changed or new settings and where they are.
 - Settings and dashboard GUI part 2
-  * 
+  * Auto-adjust width
+  * Scrollbar if too long
+  * Buttons to reset settings to default and maybe other stuff (start challenges manually)
   * Build HUD for script stats
   * Move log to a textfield
+  * Option to hide GUI
 */
 
 
@@ -112,7 +119,7 @@ tempSetting = new scriptSetting("autoGameFlow", false, "Reincarnate, Ascend, do 
 tempSetting = new scriptSetting("autoTalismans", false, "Automatically enhances and fortifies talismans and buys Mortuus ant", "Auto Talismans", "main", "toggles", 30);
 tempSetting = new scriptSetting("autoChallengeTrans", false, "Runs Trans challenges, but only if triggered manually or by autoGameFlow", "Auto Challenge Trans", "main", "toggles", 40);
 tempSetting = new scriptSetting("autoChallengeReinc", false, "Runs Reinc challenges, but only if triggered manually or by autoGameFlow", "Auto Challenge Reinc", "main", "toggles", 50);
-tempSetting = new scriptSetting("autoRunes", false, "Automatically levels runes. Saves offerings just before getting some techs and at ant timer < 10 minutes", "Auto Runes", "main", "toggles", 60);
+tempSetting = new scriptSetting("autoRunes", false, "Automatically levels runes. Saves offerings just before getting some techs and at ant timer < some value", "Auto Runes", "main", "toggles", 60);
 tempSetting = new scriptSetting("autoReincUpgrades", false, "Automatically buys Particle upgrades", "Auto Particle Upgrades", "main", "toggles", 70);
 tempSetting = new scriptSetting("autoOpenCubes", false, "Automatically opens all cubes", "Auto Open Cubes", "main", "toggles", 80);
 tempSetting = new scriptSetting("autoPartBuildings", false, "Automatically buy particle buildings every script interval. For when you don't have c1x7 to c1x9 yet.", "Auto Particle Buildings", "main", "toggles", 90, true);
@@ -253,8 +260,6 @@ function scriptCreateElement(htmlString) {
   return div.firstElementChild;
 }
 
-function $(x) {return document.getElementById(x);}
-
 // Event Handler for changing a settings checkbox
 function scriptToggleCheckbox(setting, index = -1) {
   if (index === -1) {
@@ -330,11 +335,11 @@ function scriptCreateSettingsColumn(id, width, heading) {
 function scriptChangeSettingsTab(tab) {
   for (let i = 0; i < scriptVariables.settingsTabs.length; i++) {
     if (scriptVariables.settingsTabs[i] === tab) {
-      $(scriptVariables.settingsTabs[i]).style.display = 'flex';
-      $(scriptVariables.settingsTabs[i]+"-headerbutton").style.backgroundColor = 'darkred';
+      document.getElementById(scriptVariables.settingsTabs[i]).style.display = 'flex';
+      document.getElementById(scriptVariables.settingsTabs[i]+"-headerbutton").style.backgroundColor = 'darkred';
     } else {
-      $(scriptVariables.settingsTabs[i]).style.display = 'none';
-      $(scriptVariables.settingsTabs[i]+"-headerbutton").style.backgroundColor = 'black';
+      document.getElementById(scriptVariables.settingsTabs[i]).style.display = 'none';
+      document.getElementById(scriptVariables.settingsTabs[i]+"-headerbutton").style.backgroundColor = 'black';
     }
   }
 }
@@ -342,10 +347,10 @@ function scriptChangeSettingsTab(tab) {
 // Creates an empty settings section with header button
 function scriptCreateSettingsSection(id, name, container, header) {
   // Create header button
-  $(header).append(scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" onclick = "scriptChangeSettingsTab(\''+id+'\')" value = "'+name+'">'));
+  document.getElementById(header).append(scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" onclick = "scriptChangeSettingsTab(\''+id+'\')" value = "'+name+'">'));
   
   // Create div
-  $(container).append(scriptCreateElement('<div id = "'+id+'" class = "script-section"></div>'));
+  document.getElementById(container).append(scriptCreateElement('<div id = "'+id+'" class = "script-section"></div>'));
   
   // Append to tabs list
   scriptVariables.settingsTabs.push(id);
@@ -367,7 +372,7 @@ function scriptAddOneSettingToSections(setting) {
     default: console.error("Data Type "+datatype+" of setting "+setting+" is not compatible!"); return;
   }
   
-  let col = $("script-settings-"+scriptDefineSettings[setting].section+"-"+scriptDefineSettings[setting].column);
+  let col = document.getElementById("script-settings-"+scriptDefineSettings[setting].section+"-"+scriptDefineSettings[setting].column);
   if (col) {
     col.append(element);
   } else {
@@ -384,7 +389,9 @@ function scriptAddSettingsToSections() {
 }
 
 function scriptInitializeDisplay() {
-  let body = $('settings').parentElement.parentElement;
+  let settings_tab = document.getElementById('settings');
+  let body;
+  if (settings_tab) body = settings_tab.parentElement.parentElement;
   if (body) {
     body.append(scriptCreateElement('<div id="script-settings" style="color: white; position: absolute; top: 720px; margin-left: 20px; min-width: 1250px; max-width: 1400px;"></div>'));
     
@@ -434,28 +441,30 @@ function scriptInitializeDisplay() {
     ref.parentNode.insertBefore(style, ref);
     
     // Insert script settings header
-    $('script-settings').append(scriptCreateElement('<div id="script-settings-header" class="script-header"><p class = "script-heading script-para" style = "margin-right: 3px; padding-left: 2px; padding-right: 2px">Script Settings</p></div>'));
+    document.getElementById('script-settings').append(scriptCreateElement('<div id="script-settings-header" class="script-header"><p class = "script-heading script-para" style = "margin-right: 3px; padding-left: 2px; padding-right: 2px">Script Settings</p></div>'));
     
     // Insert script settings sections
     scriptCreateSettingsSection("script-settings-main", "Main", "script-settings", "script-settings-header");
-    $('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-info', '40%', 'Info'));
-    $('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-log', '40%', 'Log'));
-    $('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-toggles', '20%', 'Toggles'));
+    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-info', '40%', 'Info'));
+    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-log', '40%', 'Log'));
+    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-toggles', '20%', 'Toggles'));
     scriptCreateSettingsSection("script-settings-flow", "Flow", "script-settings", "script-settings-header");
-    $('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-ascend', '22%', 'Ascension'));
-    $('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-challenges', '39%', 'Challenges'));
-    $('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-blessings', '39%', 'Talismans, Blessings & Pushing'));
+    document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-ascend', '22%', 'Ascension'));
+    document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-challenges', '39%', 'Challenges'));
+    document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-blessings', '39%', 'Talismans, Blessings & Pushing'));
     scriptCreateSettingsSection("script-settings-runes", "Runes & Talismans", "script-settings", "script-settings-header");
-    $('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-runes', '40%', 'Runes'));
-    $('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-talismans', '40%', 'Talismans'));
+    document.getElementById('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-runes', '40%', 'Runes'));
+    document.getElementById('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-talismans', '40%', 'Talismans'));
     scriptCreateSettingsSection("script-settings-challenges", "Challenges", "script-settings", "script-settings-header");
-    $('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-trans', '40%', 'Transcension Challenges'));
-    $('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-reinc', '40%', 'Reincarnation Challenges'));
+    document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-trans', '40%', 'Transcension Challenges'));
+    document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-reinc', '40%', 'Reincarnation Challenges'));
     
     scriptAddSettingsToSections();
     scriptChangeSettingsTab("script-settings-main");
     
     scriptVariables.displayInitialized = true;
+  } else {
+    console.error("Could not create script GUI, body not found.")
   }
 }
 
