@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name         Synergism Ascension Automator
+// @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.7.1
+// @version      1.7.1.1
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
