@@ -1,3 +1,13 @@
+// ==UserScript==
+// @name         Synergism Ascension Automator
+// @namespace    Galefury
+// @version      1.7.1
+// @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.js
+// @author       Galefury
+// @match        https://v1011testing.vercel.app/
+// @grant        none
+// ==/UserScript==
+
 /*
 Script written by Galefury.
 This is an automation script for the idle game Synergism, made by Platonic, playable at https://pseudonian.github.io/SynergismOfficial/
@@ -28,6 +38,9 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.7.2 15-Aug-20  Add Userscript Metadata
+- You should now be able to easily use the script with Tampermonkey and Greasemonkey (untested), and get automatic updates.
+
 1.7.1 15-Aug-20  Improvment to fast rune spending
 - Internal improvement to the fast offering spending, again contributed by Azarlak. It now works without reloading and is less likely to break in the future.
 
@@ -95,10 +108,11 @@ TODO:
 - Settings and dashboard GUI part 2
   * Auto-adjust width
   * Scrollbar if too long
-  * Buttons to reset settings to default and maybe other stuff (start challenges manually)
+  * Buttons to reset settings to default and maybe other stuff (start challenges manually, export/import settings)
   * Build HUD for script stats
   * Move log to a textfield
   * Option to hide GUI
+  * Implement spaceafter
 */
 
 
