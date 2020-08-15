@@ -169,7 +169,7 @@ tempSetting = new scriptSetting("runeCaps", [5000, 5000, 5000, 5000, 5000], "Put
 tempSetting = new scriptSetting("runeWeights", [1, 2, 1, 3, 4], "Weights for how many offerings to put into each rune", "Rune weights", "runes", "runes", 20, true);
 tempSetting = new scriptSetting("runeAntTimer", 10, "Will not spend offerings until the sacrifice timer has reached this amount of seconds", "Minimum Ant timer", "runes", "runes", 30);
 tempSetting = new scriptSetting("runeSpendingCap", 1e7, "Spend at most this many offerings at once to keep the script from lagging. Set to 0 to turn off. Clamped to between 1 and 1e8 if the below fast spending cheat is turned off.", "Offering spending cap", "runes", "runes", 40);
-tempSetting = new scriptSetting("runeFastSpendCheat", false, "Enable spending an arbitrary amount of offerings instantly by modifying the game code. Only applies on reload! You can turn off the above limiter when using this.", "Fast off spending cheat", "runes", "runes", 45, true);
+tempSetting = new scriptSetting("runeFastSpendCheat", false, "Enable spending an arbitrary amount of offerings instantly. You can turn off the above limiter when using this.", "Fast off spending cheat", "runes", "runes", 45, true);
 tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.", "5x3 wait", "runes", "runes", 50);
 tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16", "4x16 wait", "runes", "runes", 60);
 tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17", "4x17 wait", "runes", "runes", 70);
@@ -197,7 +197,6 @@ scriptVariables.ascensionBlessingRespecDone = player.talismanOne.reduce(((result
 scriptVariables.lastLogCounter = 0; //A
 scriptVariables.displayInitialized = false;
 scriptVariables.settingsTabs = [];
-scriptVariables.runeFastSpendOn = false;
 
 // Settings infrastructure
 function scriptSettingsSave() {
@@ -260,9 +259,6 @@ function scriptSettingsResetToDefault() {
   scriptSettingsClean();
   scriptSettingsSave();
 }
-
-// ===== LOAD SETTINGS =====
-scriptSettingsLoad();
 
 // Creates a HTML Element from a String
 function scriptCreateElement(htmlString) {
@@ -849,55 +845,32 @@ function scriptAutoChallengeReinc() {
 }
 
 // AutoRune helper functions
-let scriptLevelRune;
-if (scriptSettings.runeFastSpendCheat && redeemShards.toString().includes("if (player.offeringbuyamount > 100){amount = player.runeshards}")) {
-  // Change this function so that we can spend arbitrary exact amounts of offerings (other than 1000, which will be 999 instead)
-  redeemShards = new Function("runeIndexPlusOne", "auto", "autoMult", "cubeUpgraded", redeemShards.toString().replace(
-    "if (player.offeringbuyamount > 100){amount = player.runeshards}",
-    "if (player.offeringbuyamount === 1000){amount = player.runeshards}"
-  ).replace("function redeemShards(runeIndexPlusOne,auto,autoMult,cubeUpgraded) {", "").replace(/}$/, ""));
-  scriptLevelRune = function(rune, offerings, spendAll) {
-    if (spendAll) {
-      toggleBuyAmount(1000, 'offering');
-      redeemShards(rune);
-    } else {
-      const temp = player.offeringbuyamount;
-      player.offeringbuyamount = offerings / (player.upgrades[78] ? 1000 : 1);
-      if (player.offeringbuyamount === 1000) { player.offeringbuyamount = 999; } // 1000 is reserved for using max
-      redeemShards(rune);
-      player.offeringbuyamount = temp;
-    }
-  }
-  scriptVariables.runeFastSpendOn = true;
-} else {
-  // Spends less than but as close as possible to the given amount of offerings on the given rune (1 to 5)
-  scriptLevelRune = function(rune, offerings, spendAll) {
-    if (spendAll) {
-      toggleBuyAmount(1000,'offering');
-      redeemShards(rune);
-    }
-    else
-    {
-      let spent = 0;
-      let tospend = 100;
-      let amount = tospend * (player.upgrades[78] ? 1000 : 1);
-      toggleBuyAmount(tospend,'offering');
-      while (spent < offerings) {
-        if (spent + amount < offerings) {
-          redeemShards(rune);
-          spent += amount;
-        } else if (tospend <= 1) {
-          return;
-        } else {
-          tospend /= 10;
-          amount = tospend * (player.upgrades[78] ? 1000 : 1);
-          toggleBuyAmount(tospend,'offering');
-        }
+function scriptLevelRune(rune, offerings, spendAll) {
+  if (spendAll) {
+    toggleBuyAmount(1000, 'offering');
+    redeemShards(rune);
+  } else if (scriptSettings.runeFastSpendCheat) {
+    redeemShards(rune, true, null, offerings);
+  } else {
+    // Spends less than but as close as possible to the given amount of offerings on the given rune (1 to 5)
+    let spent = 0;
+    let tospend = 100;
+    let amount = tospend * (player.upgrades[78] ? 1000 : 1);
+    toggleBuyAmount(tospend, 'offering');
+    while (spent < offerings) {
+      if (spent + amount < offerings) {
+        redeemShards(rune);
+        spent += amount;
+      } else if (tospend <= 1) {
+        return;
+      } else {
+        tospend /= 10;
+        amount /= 10;
+        toggleBuyAmount(tospend, 'offering');
       }
     }
   }
-  scriptVariables.runeFastSpendOn = false;
-}
+};
 	
 // Automatically levels up runes
 function scriptAutoRunes() {
@@ -927,7 +900,7 @@ function scriptAutoRunes() {
   // Spending
   // Level equally, thrift first, skipping maxed runes
   let availableOfferings = player.runeshards - (scriptVariables.saveOfferingsForRespecs ? 800000 : 0);
-  let spendCap = (scriptVariables.runeFastSpendOn ? scriptSettings.runeSpendingCap : Math.min(Math.max(scriptSettings.runeSpendingCap, 1), 1e8));
+  let spendCap = (scriptSettings.runeFastSpendCheat ? scriptSettings.runeSpendingCap : Math.min(Math.max(scriptSettings.runeSpendingCap, 1), 1e8));
   availableOfferings = (spendCap > 0 ? Math.min(availableOfferings, spendCap) : availableOfferings);
   if (availableOfferings < (player.upgrades[78] > 0.5 ? 10000 : 10)) return; // Only spend if splitting roughly equally is possible
   let offeringsToSpend = 0;
@@ -998,6 +971,7 @@ function scriptAutoAll () {
   }
 }
 
+scriptSettingsLoad();
 sLog(0, "Starting Script");
 resetCheck('challenge');
 resetCheck('reincarnationchallenge');
