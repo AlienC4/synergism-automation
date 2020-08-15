@@ -835,33 +835,54 @@ function scriptAutoChallengeReinc() {
 }
 
 // AutoRune helper functions
-// Spends less than but as close as possible to the given amount of offerings on the given rune (1 to 5)
-function scriptLevelRune(rune, offerings, spendAll) {
-  if (spendAll) {
-    toggleBuyAmount(1000,'offering');
-    redeemShards(rune);
+let scriptLevelRune;
+if (redeemShards.toString().includes("if (player.offeringbuyamount > 100){amount = player.runeshards}")) {
+  // Change this function so that we can spend arbitrary exact amounts of offerings (other than 1000, which will be 99 instead)
+  redeemShards = new Function("runeIndexPlusOne", "auto", "autoMult", "cubeUpgraded", redeemShards.toString().replace(
+    "if (player.offeringbuyamount > 100){amount = player.runeshards}",
+    "if (player.offeringbuyamount === 1000){amount = player.runeshards}"
+  ).replace("function redeemShards(runeIndexPlusOne,auto,autoMult,cubeUpgraded) {", "").replace(/}$/, ""));
+  scriptLevelRune = function(rune, offerings, spendAll) {
+    if (spendAll) {
+      toggleBuyAmount(1000, 'offering');
+      redeemShards(rune);
+    } else {
+      const temp = player.offeringbuyamount;
+      player.offeringbuyamount = offerings / (player.upgrades[78] ? 1000 : 1);
+      if (player.offeringbuyamount === 1000) { player.offeringbuyamount = 999; } // 1000 is reserved for using max
+      redeemShards(rune);
+      player.offeringbuyamount = temp;
+    }
   }
-  else
-  {
-    let spent = 0;
-    let tospend = 100;
-    let amount = tospend * (player.upgrades[78] ? 1000 : 1);
-    toggleBuyAmount(tospend,'offering');
-    while (spent < offerings) {
-      if (spent + amount < offerings) {
-        redeemShards(rune);
-        spent += amount;
-      } else if (tospend <= 1) {
-        return;
-      } else {
-        tospend /= 10;
-        amount = tospend * (player.upgrades[78] ? 1000 : 1);
-        toggleBuyAmount(tospend,'offering');
+} else {
+  // Spends less than but as close as possible to the given amount of offerings on the given rune (1 to 5)
+  scriptLevelRune = function(rune, offerings, spendAll) {
+    if (spendAll) {
+      toggleBuyAmount(1000,'offering');
+      redeemShards(rune);
+    }
+    else
+    {
+      let spent = 0;
+      let tospend = 100;
+      let amount = tospend * (player.upgrades[78] ? 1000 : 1);
+      toggleBuyAmount(tospend,'offering');
+      while (spent < offerings) {
+        if (spent + amount < offerings) {
+          redeemShards(rune);
+          spent += amount;
+        } else if (tospend <= 1) {
+          return;
+        } else {
+          tospend /= 10;
+          amount = tospend * (player.upgrades[78] ? 1000 : 1);
+          toggleBuyAmount(tospend,'offering');
+        }
       }
     }
   }
 }
-
+	
 // Automatically levels up runes
 function scriptAutoRunes() {
   // If saving for respec, keep at least 800k
@@ -906,7 +927,7 @@ function scriptAutoRunes() {
     let runeToLevel = i;
     if (i === 4) runeToLevel = 1;
     if (i === 1) runeToLevel = 4;
-    if (player.runelevels[runeToLevel-1] < scriptSettings.runeCaps[runeToLevel-1]) scriptLevelRune(runeToLevel, offeringsToSpend * scriptSettings.runeWeights[runeToLevel-1], false);
+    if (player.runelevels[runeToLevel-1] < scriptSettings.runeCaps[runeToLevel-1]) scriptLevelRune(runeToLevel, Math.floor(offeringsToSpend * scriptSettings.runeWeights[runeToLevel-1]), false);
   }
 
   // If we ended up spending, we're not waiting
