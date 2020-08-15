@@ -9,7 +9,7 @@ EXPORT YOUR SAVE BEFORE USING!!!
 
 Note that some (or all) features of this script may be seen as cheating by some people, especially features that directly emulate ingame upgrades.
 So when bragging about your achievements you should probably mention that you used a script to do them, to be fair to players who did it all manually.
-I've tried to only use functions that are also directly called by pressing buttons with the same arguments, so hopefully the script will not do anything that the player cant do.
+I've tried to only use functions that are also directly called by pressing buttons with the same arguments, so hopefully the script will not do anything that the player cant do. Exceptions are marked as a cheat.
 But sometimes buttons are hidden but the functions still work, so there is no guarantee that the script will not cheat (e.g. in my tests the script bought some talismans I hadn't unlocked yet...)
 Go to your Synergism tab, press F12 and paste the script into the Javascript console to use it, then press enter. Refresh the page or use window.clearInterval(###Interval ID returned after copypaste here###) to get rid of it.
 Step by step instructions: Click into this text, Ctrl-A, Ctrl-C, switch to synergism window, F12 (depending on browser), click into the javascript console prompt, Ctrl-V, Enter
@@ -28,6 +28,12 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.7   15-Aug-20  Add fast rune spending
+- Added a change by Azarlak to enable Auto Runes to instantly spend large amounts of offerings. This action is not normally available to the player and thus marked as a cheat, even though
+  the advantage is not a huge one. It removes the lag when spending a lot of offerings with the Auto Runes feature. The new setting is on the Runes tab and is only applied on script load.
+- To go with the above setting, the offerings spending limiter can now be turned off by setting it to 0, but if the fast spending option is turned off only values between 1 and 1e8 are
+  considered to prevent crashing the game.
+
 1.6.1 14-Aug-20  Fix GUI for Firefox
 - GUI works now in Firefox
 
@@ -80,6 +86,9 @@ TODO:
 - Tampermonkey stuff for automatic script loading
 - Refactor into a looping function to simplify variable names without risking naming conflicts and get rid of the window.setInterval
 - Add settings save version as a hidden setting. Reset changed settings if needed and print a log message about changed or new settings and where they are.
+- Print a message on new version
+- Add a changelog button
+- Show an alert when changing a setting that will only apply on reload
 - Settings and dashboard GUI part 2
   * Auto-adjust width
   * Scrollbar if too long
@@ -159,7 +168,8 @@ tempSetting = new scriptSetting("maxReincChallengeDuration", 10, "How long to wa
 tempSetting = new scriptSetting("runeCaps", [5000, 5000, 5000, 5000, 5000], "Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)", "Rune caps", "runes", "runes", 10);
 tempSetting = new scriptSetting("runeWeights", [1, 2, 1, 3, 4], "Weights for how many offerings to put into each rune", "Rune weights", "runes", "runes", 20, true);
 tempSetting = new scriptSetting("runeAntTimer", 10, "Will not spend offerings until the sacrifice timer has reached this amount of seconds", "Minimum Ant timer", "runes", "runes", 30);
-tempSetting = new scriptSetting("runeSpendingCap", 1e7, "Spend at most this many offerings at once to keep the script from lagging", "Offering spending cap", "runes", "runes", 40, true);
+tempSetting = new scriptSetting("runeSpendingCap", 1e7, "Spend at most this many offerings at once to keep the script from lagging. Set to 0 to turn off. Clamped to between 1 and 1e8 if the below fast spending cheat is turned off.", "Offering spending cap", "runes", "runes", 40);
+tempSetting = new scriptSetting("runeFastSpendCheat", false, "Enable spending an arbitrary amount of offerings instantly by modifying the game code. Only applies on reload! You can turn off the above limiter when using this.", "Fast off spending cheat", "runes", "runes", 45, true);
 tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.", "5x3 wait", "runes", "runes", 50);
 tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16", "4x16 wait", "runes", "runes", 60);
 tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17", "4x17 wait", "runes", "runes", 70);
@@ -187,6 +197,7 @@ scriptVariables.ascensionBlessingRespecDone = player.talismanOne.reduce(((result
 scriptVariables.lastLogCounter = 0; //A
 scriptVariables.displayInitialized = false;
 scriptVariables.settingsTabs = [];
+scriptVariables.runeFastSpendOn = false;
 
 // Settings infrastructure
 function scriptSettingsSave() {
@@ -249,6 +260,9 @@ function scriptSettingsResetToDefault() {
   scriptSettingsClean();
   scriptSettingsSave();
 }
+
+// ===== LOAD SETTINGS =====
+scriptSettingsLoad();
 
 // Creates a HTML Element from a String
 function scriptCreateElement(htmlString) {
@@ -836,8 +850,8 @@ function scriptAutoChallengeReinc() {
 
 // AutoRune helper functions
 let scriptLevelRune;
-if (redeemShards.toString().includes("if (player.offeringbuyamount > 100){amount = player.runeshards}")) {
-  // Change this function so that we can spend arbitrary exact amounts of offerings (other than 1000, which will be 99 instead)
+if (scriptSettings.runeFastSpendCheat && redeemShards.toString().includes("if (player.offeringbuyamount > 100){amount = player.runeshards}")) {
+  // Change this function so that we can spend arbitrary exact amounts of offerings (other than 1000, which will be 999 instead)
   redeemShards = new Function("runeIndexPlusOne", "auto", "autoMult", "cubeUpgraded", redeemShards.toString().replace(
     "if (player.offeringbuyamount > 100){amount = player.runeshards}",
     "if (player.offeringbuyamount === 1000){amount = player.runeshards}"
@@ -854,6 +868,7 @@ if (redeemShards.toString().includes("if (player.offeringbuyamount > 100){amount
       player.offeringbuyamount = temp;
     }
   }
+  scriptVariables.runeFastSpendOn = true;
 } else {
   // Spends less than but as close as possible to the given amount of offerings on the given rune (1 to 5)
   scriptLevelRune = function(rune, offerings, spendAll) {
@@ -881,6 +896,7 @@ if (redeemShards.toString().includes("if (player.offeringbuyamount > 100){amount
       }
     }
   }
+  scriptVariables.runeFastSpendOn = false;
 }
 	
 // Automatically levels up runes
@@ -911,8 +927,9 @@ function scriptAutoRunes() {
   // Spending
   // Level equally, thrift first, skipping maxed runes
   let availableOfferings = player.runeshards - (scriptVariables.saveOfferingsForRespecs ? 800000 : 0);
-  availableOfferings = Math.min(availableOfferings, scriptSettings.runeSpendingCap);
-  if (availableOfferings < (player.upgrades[78] > 0.5 ? 10000 : 10)) return; // Only spend if spending equally is possible
+  let spendCap = (scriptVariables.runeFastSpendOn ? scriptSettings.runeSpendingCap : Math.min(Math.max(scriptSettings.runeSpendingCap, 1), 1e8));
+  availableOfferings = (spendCap > 0 ? Math.min(availableOfferings, spendCap) : availableOfferings);
+  if (availableOfferings < (player.upgrades[78] > 0.5 ? 10000 : 10)) return; // Only spend if splitting roughly equally is possible
   let offeringsToSpend = 0;
   let runeCount = 0;
   // Spend equally. Count uncapped runes, then spend equally across all
@@ -981,7 +998,6 @@ function scriptAutoAll () {
   }
 }
 
-scriptSettingsLoad()
 sLog(0, "Starting Script");
 resetCheck('challenge');
 resetCheck('reincarnationchallenge');
