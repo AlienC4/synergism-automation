@@ -28,6 +28,9 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.7.1 15-Aug-20  Improvment to fast rune spending
+- Internal improvement to the fast offering spending, again contributed by Azarlak. It now works without reloading and is less likely to break in the future.
+
 1.7   15-Aug-20  Add fast rune spending
 - Added a change by Azarlak to enable Auto Runes to instantly spend large amounts of offerings. This action is not normally available to the player and thus marked as a cheat, even though
   the advantage is not a huge one. It removes the lag when spending a lot of offerings with the Auto Runes feature. The new setting is on the Runes tab and is only applied on script load.
@@ -169,7 +172,7 @@ tempSetting = new scriptSetting("runeCaps", [5000, 5000, 5000, 5000, 5000], "Put
 tempSetting = new scriptSetting("runeWeights", [1, 2, 1, 3, 4], "Weights for how many offerings to put into each rune", "Rune weights", "runes", "runes", 20, true);
 tempSetting = new scriptSetting("runeAntTimer", 10, "Will not spend offerings until the sacrifice timer has reached this amount of seconds", "Minimum Ant timer", "runes", "runes", 30);
 tempSetting = new scriptSetting("runeSpendingCap", 1e7, "Spend at most this many offerings at once to keep the script from lagging. Set to 0 to turn off. Clamped to between 1 and 1e8 if the below fast spending cheat is turned off.", "Offering spending cap", "runes", "runes", 40);
-tempSetting = new scriptSetting("runeFastSpendCheat", false, "Enable spending an arbitrary amount of offerings instantly. You can turn off the above limiter when using this.", "Fast off spending cheat", "runes", "runes", 45, true);
+tempSetting = new scriptSetting("runeFastSpendCheat", false, "Enable spending an arbitrary amount of offerings instantly. You can turn off the above limiter when using this.", "Fast offering spending cheat", "runes", "runes", 45, true);
 tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.", "5x3 wait", "runes", "runes", 50);
 tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16", "4x16 wait", "runes", "runes", 60);
 tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17", "4x17 wait", "runes", "runes", 70);
