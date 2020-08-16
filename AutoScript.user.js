@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.8.1
+// @version      1.8.2
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -39,6 +39,9 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.8.2 16-Aug-20  Fix copypaste way of using the script
+- Fix using the script by copypasting to console that I broke in the previous update...
+
 1.8.1 16-Aug-20  Bugfixes
 - Fix Settings GUI in Tampermonkey
 - Fix an exploit
@@ -296,7 +299,7 @@ function scriptCreateElement(htmlString) {
 }
 
 // Event Handler for changing a settings checkbox
-unsafeWindow.scriptToggleCheckbox = function (setting, index = -1) {
+function scriptToggleCheckbox (setting, index = -1) {
   if (index === -1) {
     if (event.target.checked) {
       scriptSettings[setting] = true;
@@ -312,6 +315,7 @@ unsafeWindow.scriptToggleCheckbox = function (setting, index = -1) {
   }
   scriptSettingsSave();
 }
+if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptToggleCheckbox = scriptToggleCheckbox;}
 
 // Returns a label + checkbox element tied to the given setting
 function scriptCreateCheckbox(id, setting, label, mouseover, arrayCount = 0) {
@@ -332,7 +336,7 @@ function scriptCreateCheckbox(id, setting, label, mouseover, arrayCount = 0) {
 }
 
 // Event Handler for changing a number field
-unsafeWindow.scriptChangeNumberField = function (setting, index = -1) {
+function scriptChangeNumberField(setting, index = -1) {
   if (index === -1) {
     scriptSettings[setting] = Number(event.target.value);
   } else {
@@ -340,6 +344,7 @@ unsafeWindow.scriptChangeNumberField = function (setting, index = -1) {
   }
   scriptSettingsSave();
 }
+if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptChangeNumberField = scriptChangeNumberField;}
 
 // Returns a label + number field tied to the given setting
 function scriptCreateNumberField(id, setting, label, mouseover, arrayCount = 0) {
@@ -367,7 +372,7 @@ function scriptCreateSettingsColumn(id, width, heading) {
 }
 
 // Event Handler for settings tab buttons
-unsafeWindow.scriptChangeSettingsTab = function (tab) {
+function scriptChangeSettingsTab(tab) {
   for (let i = 0; i < scriptVariables.settingsTabs.length; i++) {
     if (scriptVariables.settingsTabs[i] === tab) {
       document.getElementById(scriptVariables.settingsTabs[i]).style.display = 'flex';
@@ -378,6 +383,7 @@ unsafeWindow.scriptChangeSettingsTab = function (tab) {
     }
   }
 }
+if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptChangeSettingsTab = scriptChangeSettingsTab;}
 
 // Creates an empty settings section with header button
 function scriptCreateSettingsSection(id, name, container, header) {
