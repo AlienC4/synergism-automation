@@ -214,6 +214,7 @@ scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0
 scriptVariables.ascensionBlessingRespecDone = player.talismanOne.reduce(((result,value,index)=>{let checkArray = [null, 1, -1, 1, -1, 1]; return value === checkArray[index] && result;}), true); //A
 scriptVariables.lastLogCounter = 0; //A
 scriptVariables.displayInitialized = false;
+scriptVariables.scriptInitialized = false;
 scriptVariables.settingsTabs = [];
 
 // Settings infrastructure
@@ -973,9 +974,22 @@ function scriptAutoPartBuildings() {
   }
 }
 
+function scriptInitialize() {
+  sLog(0, "Starting Script");
+  resetCheck('challenge');
+  resetCheck('reincarnationchallenge');
+  
+  scriptVariables.scriptInitialized = true;
+}
+
 // Calls all other automator functions if they are turned on
 function scriptAutoAll () {
+  // only start once the game is ready
+  if (timeWarp) return;
+
+  if (!(scriptVariables.scriptInitialized)) scriptInitialize();
   if (!(scriptVariables.displayInitialized)) scriptInitializeDisplay();
+  
   if (scriptSettings.autoTurnedOn) {
     if (scriptSettings.autoLog) scriptAutoLog();
     if (scriptSettings.autoGameFlow) scriptAutoGameFlow();
@@ -990,8 +1004,5 @@ function scriptAutoAll () {
 }
 
 scriptSettingsLoad();
-sLog(0, "Starting Script");
-resetCheck('challenge');
-resetCheck('reincarnationchallenge');
 
 window.setInterval(scriptAutoAll, scriptSettings.scriptInterval);
