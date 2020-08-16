@@ -2,11 +2,11 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.8.0
+// @version      1.8.1
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
-// @grant        none
+// @grant        unsafeWindow
 // ==/UserScript==
 
 /*
@@ -39,6 +39,10 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.8.1 16-Aug-20  Bugfixes
+- Fix Settings GUI in Tampermonkey
+- Fix an exploit
+
 1.8   16-Aug-20  Fix script starting before the game is ready
 - Only start the script after offline progress and preloading are done
 
@@ -292,7 +296,7 @@ function scriptCreateElement(htmlString) {
 }
 
 // Event Handler for changing a settings checkbox
-function scriptToggleCheckbox(setting, index = -1) {
+unsafeWindow.scriptToggleCheckbox = function (setting, index = -1) {
   if (index === -1) {
     if (event.target.checked) {
       scriptSettings[setting] = true;
@@ -328,7 +332,7 @@ function scriptCreateCheckbox(id, setting, label, mouseover, arrayCount = 0) {
 }
 
 // Event Handler for changing a number field
-function scriptChangeNumberField(setting, index = -1) {
+unsafeWindow.scriptChangeNumberField = function (setting, index = -1) {
   if (index === -1) {
     scriptSettings[setting] = Number(event.target.value);
   } else {
@@ -363,7 +367,7 @@ function scriptCreateSettingsColumn(id, width, heading) {
 }
 
 // Event Handler for settings tab buttons
-function scriptChangeSettingsTab(tab) {
+unsafeWindow.scriptChangeSettingsTab = function (tab) {
   for (let i = 0; i < scriptVariables.settingsTabs.length; i++) {
     if (scriptVariables.settingsTabs[i] === tab) {
       document.getElementById(scriptVariables.settingsTabs[i]).style.display = 'flex';
@@ -378,7 +382,9 @@ function scriptChangeSettingsTab(tab) {
 // Creates an empty settings section with header button
 function scriptCreateSettingsSection(id, name, container, header) {
   // Create header button
-  document.getElementById(header).append(scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" onclick = "scriptChangeSettingsTab(\''+id+'\')" value = "'+name+'">'));
+  let btn = scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" onclick = "scriptChangeSettingsTab(\''+id+'\')" value = "'+name+'">');
+  btn.addEventListener("click", scriptChangeSettingsTab(id));
+  document.getElementById(header).append(btn);
   
   // Create div
   document.getElementById(container).append(scriptCreateElement('<div id = "'+id+'" class = "script-section"></div>'));
@@ -594,7 +600,8 @@ function scriptAutoGameFlow () {
   // Needed Shards are at 800k to match up with the push condition. The script will push until it no longer can significantly boost ants by it, then ascend.
   // Step 1: Respec Talismans, Ascend, reset Variables
   // Step 2: maybe some initial stuff, for now no further steps
-  if (player.challengecompletions["ten"] >= scriptSettings.flowAscendAtC10Completions && (scriptSettings.flowAscendImmediately  || (scriptNoCurrentAction() && player.runeshards > 400000))) {
+  if (scriptSettings.flowAscendAtC10Completions > 0 && player.challengecompletions["ten"] >= scriptSettings.flowAscendAtC10Completions
+      && (scriptSettings.flowAscendImmediately  || (scriptNoCurrentAction() && player.runeshards > 400000))) {
     sLog(2, "Ascending with " + player.challengecompletions.ten + " C10 completions after " + player.ascensionCounter + " seconds");
 
     if (scriptSettings.autoLog) scriptLogStuff();
