@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.7.1.1
+// @version      1.8.0
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -39,6 +39,9 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.8   16-Aug-20  Fix script starting before the game is ready
+- Only start the script after offline progress and preloading are done
+
 1.7.2 15-Aug-20  Add Userscript Metadata
 - You should now be able to easily use the script with Tampermonkey and Greasemonkey (untested), and get automatic updates.
 
