@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.8.2
+// @version      1.9.0
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -39,6 +39,11 @@ It can run an ascension from start to finish if you have row 1 of cube upgrades.
 
 /*
 Changelog
+1.9   17-Aug-20  Add Challenge Limiter
+- Added settings to limit the amount of completions of each challenge. Might overshoot a bit depending on script interval and completion speed.
+- Added settings to limit entering challenges based on particles exponent
+- Fix: Game hotkeys now don't trigger when entering things in script settings fields
+
 1.8.2 16-Aug-20  Fix copypaste way of using the script
 - Fix using the script by copypasting to console that I broke in the previous update...
 
@@ -110,8 +115,6 @@ TODO:
 - Option to limit each challenge completions
 - Log current speedup and maybe other game stats
 - Auto Research for pre-roomba?
-- Tampermonkey stuff for automatic script loading
-- Refactor into a looping function to simplify variable names without risking naming conflicts and get rid of the window.setInterval
 - Add settings save version as a hidden setting. Reset changed settings if needed and print a log message about changed or new settings and where they are.
 - Print a message on new version
 - Add a changelog button
@@ -187,10 +190,14 @@ tempSetting = new scriptSetting("talismanInterval", 10000, "How often to buy Tal
 tempSetting = new scriptSetting("talismansEnhance", [true, true, false, false, false, true, false], "Which talismans to enhance. All talismans are fortified.", "Enhance Talisman X", "runes", "talismans", 20); // TODO: change to boolean!
 
 // Auto Trans Challenge settings
-tempSetting = new scriptSetting("maxTransChallengeDuration", 2, "How long to wait for completion of trans challenges (trans counter)", "Max duration", "challenges", "trans", 10);
+tempSetting = new scriptSetting("challengeMaxTransDuration", 2, "How long to wait for completion of trans challenges (trans counter)", "Max duration", "challenges", "trans", 10);
+tempSetting = new scriptSetting("challengeMaxTransCompletions", [1000, 1000, 1000, 1000, 1000], "How many completions of each transcension challenge to attempt. Might overshoot a bit depending on script interval.", "Max Completions", "challenges", "trans", 20);
+tempSetting = new scriptSetting("challengeMinTransParts", 0, "Minimum particle exponent to start transcension challenges", "Min Particles exponent", "challenges", "trans", 40);
 
 // Auto Reinc Challenge settings
-tempSetting = new scriptSetting("maxReincChallengeDuration", 10, "How long to wait for completion of reinc challenges (reinc counter)", "Max duration", "challenges", "reinc", 10);
+tempSetting = new scriptSetting("challengeMaxReincDuration", 10, "How long to wait for completion of reinc challenges (reinc counter)", "Max duration", "challenges", "reinc", 10);
+tempSetting = new scriptSetting("challengeMaxReincCompletions", [30, 30, 30, 30, 30], "How many completions of each reincarnation challenge to attempt. Might overshoot a bit depending on script interval.", "Max Completions", "challenges", "reinc", 20);
+tempSetting = new scriptSetting("challengeMinReincParts", [0, 20, 200, 800, 90000], "Minimum particles exponent to start each trans challenge", "Min Particles exponents", "challenges", "reinc", 30);
 
 // Auto Runes settings
 tempSetting = new scriptSetting("runeCaps", [5000, 5000, 5000, 5000, 5000], "Put your rune caps here, or put to what level you want the rune auto levelled (might go a bit higher)", "Rune caps", "runes", "runes", 10);
@@ -349,19 +356,23 @@ if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptChangeNumberFi
 // Returns a label + number field tied to the given setting
 function scriptCreateNumberField(id, setting, label, mouseover, arrayCount = 0) {
   if (arrayCount === 0) {
-    let element = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'" for = "'+id+'">'+label+'</label>'+
+    let elementString = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'" for = "'+id+'">'+label+'</label>'+
                   '<input type="number" id="'+id+'" class = "scriptsettings-numberfield" title="'+mouseover+'" value = "'+scriptSettings[setting]+'" '+
                   'onchange = "scriptChangeNumberField(\''+setting+'\')"></div>';
-    return scriptCreateElement(element);
+    let element = scriptCreateElement(elementString);
+    element.addEventListener("keydown", function(e) {e.stopPropagation();});
+    return element;
   } else {
-    let element = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'">'+label+'</label><div class = "scriptsettings-arraycontainer-number">'
+    let elementString = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'">'+label+'</label><div class = "scriptsettings-arraycontainer-number">'
     for (let i = 0; i < arrayCount; i++) {
-      element += '<input type="number" id="'+id+'-'+i+'" class = "scriptsettings-numberfield" title="'+mouseover+'" value = "'+scriptSettings[setting][i]+'" '+
-                  'style = "width: '+(95/arrayCount)+'%" '+
-                  'onchange = "scriptChangeNumberField(\''+setting+'\', '+i+')">'
+      elementString += '<input type="number" id="'+id+'-'+i+'" class = "scriptsettings-numberfield" title="'+mouseover+'" value = "'+scriptSettings[setting][i]+'" '+
+                         'style = "width: '+(95/arrayCount)+'%" '+
+                         'onchange = "scriptChangeNumberField(\''+setting+'\', '+i+')">'
     }
-    element += '</div></div>';
-    return scriptCreateElement(element);
+    elementString += '</div></div>';
+    let element = scriptCreateElement(elementString);
+    element.addEventListener("keydown", function(e) {e.stopPropagation();});
+    return element;
   }
 }
 
@@ -803,7 +814,7 @@ function scriptAutoTalismans () {
 // Set scriptVariables.currentTransChallenge to 0 to start
 function scriptAutoChallengeTrans() {
   if (scriptVariables.currentTransChallenge < 0) return;
-  let ordinals = [null,'one','two','three','four','five','six','seven','eight','nine','ten']
+  let ordinals = [null,'one','two','three','four','five','six','seven','eight','nine','ten'];
 
   if (!player.retrychallenges) toggleRetryChallenges();
 
@@ -812,9 +823,20 @@ function scriptAutoChallengeTrans() {
     scriptSetAutoSac(false);
   }
 
-  // move to next challenge if the current one is taking too long, and stop challenging after c5 is done
-  if (player.currentChallenge == "" || (player.currentChallenge == ordinals[scriptVariables.currentTransChallenge] && player.transcendcounter > scriptSettings.maxTransChallengeDuration)) {
-    if (player.currentChallenge != "") resetCheck('challenge');
+  // Abort current trans challenge if it is not the one we are trying to run to prevent getting stuck
+  if (player.currentChallenge != "" && player.currentChallenge != ordinals[scriptVariables.currentTransChallenge]) {
+    resetCheck('challenge');
+  }
+  
+  // move to next challenge if there is no current challenge, the current one is taking too long, or max completions are reached, and stop challenging after c5 is done
+  if (player.currentChallenge == ""
+      || player.transcendcounter > scriptSettings.challengeMaxTransDuration
+      || (scriptVariables.currentTransChallenge >= 1 && scriptVariables.currentTransChallenge <= 5
+          && player.highestchallengecompletions[ordinals[scriptVariables.currentTransChallenge]] >= scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1])
+      ) {
+    if (player.currentChallenge != "") {
+      resetCheck('challenge');
+    }
     if (scriptVariables.currentTransChallenge < 5) {
       scriptVariables.currentTransChallenge++;
     }
@@ -823,7 +845,17 @@ function scriptAutoChallengeTrans() {
       scriptSetAutoSac(scriptVariables.previousAutoSac);
       return;
     }
-    toggleChallenges(ordinals[scriptVariables.currentTransChallenge]);
+
+    // Don't try if coins or particles are too low
+    while (scriptVariables.currentTransChallenge < 6) {
+      if (player.reincarnationPoints.exponent >= scriptSettings.challengeMinTransParts
+          && player.challengecompletions[ordinals[scriptVariables.currentTransChallenge]] < scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1]) {
+        toggleChallenges(ordinals[scriptVariables.currentTransChallenge]);
+        break;
+      }
+      scriptVariables.currentTransChallenge++;
+    }
+    if (scriptVariables.currentTransChallenge >= 6) scriptVariables.currentTransChallenge = 5;
   }
 }
 
@@ -841,9 +873,18 @@ function scriptAutoChallengeReinc() {
     scriptVariables.previousAutoSac = player.autoAntSacrifice;
     scriptSetAutoSac(false);
   }
+  
+  // Abort current reinc challenge if it is not the one we are trying to run to prevent getting stuck
+  if (player.currentChallengeRein != "" && player.currentChallengeRein !== ordinals[scriptVariables.currentReincChallenge]) {
+    resetCheck('reincarnationchallenge');
+  }
 
-  // move to next challenge if the current one is taking too long, and stop challenging after c5 is done
-  if (player.currentChallengeRein == "" || (player.currentChallengeRein == ordinals[scriptVariables.currentReincChallenge] && player.reincarnationcounter > scriptSettings.maxReincChallengeDuration)) {
+  // move to next challenge if there is no current challenge, the current one is taking too long, or max completions are reached, and stop challenging after c5 is done
+  if (player.currentChallengeRein == ""
+      || player.reincarnationcounter > scriptSettings.challengeMaxReincDuration
+      || (scriptVariables.currentReincChallenge >= 6 && scriptVariables.currentReincChallenge < 11
+          && player.challengecompletions[ordinals[scriptVariables.currentReincChallenge]] >= scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6])
+      ) {
     if (player.currentChallengeRein != "") {
       resetCheck('reincarnationchallenge');
     }
@@ -857,25 +898,15 @@ function scriptAutoChallengeReinc() {
       return;
     }
 
-    // Don't try if you cant succeed
-    switch (scriptVariables.currentReincChallenge) {
-      case  7:
-        if (player.reincarnationPoints.exponent < 20) {scriptVariables.currentReincChallenge = 11; return;}
+    // Don't try if particles are too low
+    while (scriptVariables.currentReincChallenge < 11) {
+      if (player.reincarnationPoints.exponent >= scriptSettings.challengeMinReincParts[scriptVariables.currentReincChallenge - 6]
+          && player.challengecompletions[ordinals[scriptVariables.currentReincChallenge]] < scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6]) {
+        toggleChallenges(ordinals[scriptVariables.currentReincChallenge]);
         break;
-      case  8:
-        if (player.reincarnationPoints.exponent < 200) {scriptVariables.currentReincChallenge = 11; return;}
-        break;
-      case  9:
-        if (player.reincarnationPoints.exponent < 800) {scriptVariables.currentReincChallenge = 11; return;}
-        break;
-      case 10:
-        if (player.reincarnationPoints.exponent < 90000) {scriptVariables.currentReincChallenge = 11; return;}
-        break;
-      case 11:
-        return;
+      }
+      scriptVariables.currentReincChallenge++;
     }
-
-    toggleChallenges(ordinals[scriptVariables.currentReincChallenge]);
   }
 }
 
