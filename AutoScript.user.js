@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.11.0
+// @version      1.11.1
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,55 +38,58 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
-1.11  18-Aug-20  Add Reincarnation Timer settings
+1.11.1 18-Aug-20  Bugfix
+- Fix: Rune level calculation for offerings saving and blessings respec corrected for game changes, and now works in Tampermonkey
+
+1.11   18-Aug-20  Add Reincarnation Timer settings
 - Added settings to customize the reincarnation timer to the Flow tab
 
-1.10  18-Aug-20  Add Auto Research
+1.10   18-Aug-20  Add Auto Research
 - Added Auto Research, this does the same as the w1x10 Roomba cube upgrade but works without the cube upgrade and is currently a bit faster. There's no harm in having both on.
 - Removed the Reinc and Trans Challenge toggles, they are now always on. Both settings were never about triggering a challenge run or not, just making it work at all when triggered by something else.
 
-1.9   17-Aug-20  Add Challenge Limiter
+1.9    17-Aug-20  Add Challenge Limiter
 - Added settings to limit the amount of completions of each challenge. Might overshoot a bit depending on script interval and completion speed.
 - Added settings to limit entering challenges based on particles exponent
 - Fix: Game hotkeys now don't trigger when entering things in script settings fields
 
-1.8.2 16-Aug-20  Fix copypaste way of using the script
+1.8.2  16-Aug-20  Fix copypaste way of using the script
 - Fix using the script by copypasting to console that I broke in the previous update...
 
-1.8.1 16-Aug-20  Bugfixes
+1.8.1  16-Aug-20  Bugfixes
 - Fix Settings GUI in Tampermonkey
 - Fix an exploit
 
-1.8   16-Aug-20  Fix script starting before the game is ready
+1.8    16-Aug-20  Fix script starting before the game is ready
 - Only start the script after offline progress and preloading are done
 
-1.7.2 15-Aug-20  Add Userscript Metadata
+1.7.2  15-Aug-20  Add Userscript Metadata
 - You should now be able to easily use the script with Tampermonkey and Greasemonkey (untested), and get automatic updates.
 
-1.7.1 15-Aug-20  Improvment to fast rune spending
+1.7.1  15-Aug-20  Improvment to fast rune spending
 - Internal improvement to the fast offering spending, again contributed by Azarlak. It now works without reloading and is less likely to break in the future.
 
-1.7   15-Aug-20  Add fast rune spending
+1.7    15-Aug-20  Add fast rune spending
 - Added a change by Azarlak to enable Auto Runes to instantly spend large amounts of offerings. This action is not normally available to the player and thus marked as a cheat, even though
   the advantage is not a huge one. It removes the lag when spending a lot of offerings with the Auto Runes feature. The new setting is on the Runes tab and is only applied on script load.
 - To go with the above setting, the offerings spending limiter can now be turned off by setting it to 0, but if the fast spending option is turned off only values between 1 and 1e8 are
   considered to prevent crashing the game.
 
-1.6.1 14-Aug-20  Fix GUI for Firefox
+1.6.1  14-Aug-20  Fix GUI for Firefox
 - GUI works now in Firefox
 
-1.6   14-Aug-20  Settings GUI and settings moved to browser local storage
+1.6    14-Aug-20  Settings GUI and settings moved to browser local storage
 - Moved settings to browser local storage. They are now saved on change and restored when you load the script.
 - Added settings GUI.
 - Added setting to configure delay before challenges after reincarnation.
 
-1.5   06-Aug-20  AutoRunes improvements and new version optimization
+1.5    06-Aug-20  AutoRunes improvements and new version optimization
 - Added several AutoRunes settings to customize it
 - Due to some game changes it's currently not possible to split large amounts of offerings efficiently across all runes. Added a limiter setting to keep the script from freezing.
 - Added several AutoFlow settings
 - Several optimizations for new version gameplay
 
-1.4   06-Aug-20  Fixes for new game version
+1.4    06-Aug-20  Fixes for new game version
 - Game version: v1.011 TESTING! Update: August 6, 2020 12:12 AM PDT
 - Default rune caps set to 5000
 - Direct checks of rune level adjusted to 4 times the old value
@@ -608,7 +611,7 @@ function scriptNoCurrentAction() {
 
 // Handles the Game flow, starting challenges, respeccing talismans, reincarnating early, and so on. Does not ascend.
 function scriptAutoGameFlow () {
-  let maxTalismanBonus = Math.max(window.rune1Talisman, window.rune2Talisman, window.rune3Talisman, window.rune4Talisman, window.rune5Talisman);
+  let maxTalismanBonus = Math.max(rune1Talisman, rune2Talisman, rune3Talisman, rune4Talisman, rune5Talisman);
 
   // Determine desired reincarnation time
   if (player.reincarnationPoints.exponent < scriptSettings.flowMidReincParts) scriptVariables.targetReincTime = scriptSettings.flowEarlyReincTime; // Phase 1
@@ -620,11 +623,12 @@ function scriptAutoGameFlow () {
 
   // Start saving 800k offerings for respecs once prism goes above 850
   // Once it is on it stays on
-  scriptVariables.saveOfferingsForRespecs = scriptVariables.saveOfferingsForRespecs || ((player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > scriptSettings.flowStartSavingOfferingsRuneLevel);
+  scriptVariables.saveOfferingsForRespecs = scriptVariables.saveOfferingsForRespecs || ((player.runelevels[2] + maxTalismanBonus + (bonusant9 + player.antUpgrades[9])*3) > scriptSettings.flowStartSavingOfferingsRuneLevel);
   // see around line 500 in updatehtml.js 'if (currentTab == "runes"' for bonus level calc
 
   // Do Talisman respec for blessings once prism can go above 1050
-  if (scriptNoCurrentAction() && !scriptVariables.ascensionBlessingRespecDone && (player.runelevels[2] + maxTalismanBonus + bonusant9 + player.antUpgrades[9]) > scriptSettings.flowRespecToBlessingsRuneLevel && player.runeshards > 400000) {
+  if (scriptNoCurrentAction() && !scriptVariables.ascensionBlessingRespecDone && (player.runelevels[2] + maxTalismanBonus + (bonusant9 + player.antUpgrades[9])*3) > scriptSettings.flowRespecToBlessingsRuneLevel
+      && player.runeshards > 400000) {
     mirrorTalismanStats = [null, 1, -1, 1, -1, 1]; //Respec to 1 3 5
     respecTalismanConfirm(8);
     scriptVariables.ascensionBlessingRespecDone = true;
@@ -714,7 +718,7 @@ function scriptAutoGameFlow () {
   // 7. Reincarnate again after 60s
   // 8. Reincarnate again after 60s, update last push ant level again, and respec back to 1 3 5
   // 9. Wait 60 ingame seconds, turn ant sacrifice back on
-  if (scriptNoCurrentAction() && player.runeshards > 800000 && scriptVariables.saveOfferingsForRespecs && player.talismanRarity[1] >= scriptSettings.flowPushTalismanLevel && player.antSacrificeTimer > 300 &&
+  if (scriptNoCurrentAction() && player.runeshards > 800000 && scriptVariables.ascensionBlessingRespecDone && player.talismanRarity[1] >= scriptSettings.flowPushTalismanLevel && player.antSacrificeTimer > 300 &&
       (scriptVariables.pushLastTalismanSum == null
       || scriptVariables.pushLastTalismanSum < player.talismanRarity.reduce( (sum, current) => sum + current, 0 )
       || ((scriptSettings.flowKeepPushingWithoutMaxedTalis || scriptCheckTalismansMaxed()) && scriptCalculateAntSum(false) - scriptVariables.pushLastAntSum > scriptSettings.flowPushAntChange))) {
