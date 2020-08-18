@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.9.0
+// @version      1.10.0
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -33,12 +33,15 @@ I am also interested in feedback about how efficient the script is compared to d
 I'll most likely merge useful pull requests as long as I am playing the game and using and improving the script.
 Please do not ping me with questions about how the script works unless you did some reasonable effort on understanding it yourself.
 
-Since it is public now I will most likely add some convenience features like Tampermonkey comments and some sort of GUI if I can. For now this is all still a work in progress and fairly incomplete.
-It can run an ascension from start to finish if you have row 1 of cube upgrades.
+It can run an ascension from start to finish if you have the row 1 mythos cube upgrades.
 */
 
 /*
 Changelog
+1.10  18-Aug-20  Add Auto Research
+- Added Auto Research, this does the same as the w1x10 Roomba cube upgrade but works without the cube upgrade and is currently a bit faster. There's no harm in having both on.
+- Removed the Reinc and Trans Challenge toggles, they are now always on. Both settings were never about triggering a challenge run or not, just making it work at all when triggered by something else.
+
 1.9   17-Aug-20  Add Challenge Limiter
 - Added settings to limit the amount of completions of each challenge. Might overshoot a bit depending on script interval and completion speed.
 - Added settings to limit entering challenges based on particles exponent
@@ -156,12 +159,11 @@ tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script ru
 tempSetting = new scriptSetting("autoLog", true, "Does some periodic logging, as long as logLevel is at least 2", "Auto Log", "main", "toggles", 10);
 tempSetting = new scriptSetting("autoGameFlow", false, "Reincarnate, Ascend, do challenges, respec runes", "Auto Flow", "main", "toggles", 20);
 tempSetting = new scriptSetting("autoTalismans", false, "Automatically enhances and fortifies talismans and buys Mortuus ant", "Auto Talismans", "main", "toggles", 30);
-tempSetting = new scriptSetting("autoChallengeTrans", false, "Runs Trans challenges, but only if triggered manually or by autoGameFlow", "Auto Challenge Trans", "main", "toggles", 40);
-tempSetting = new scriptSetting("autoChallengeReinc", false, "Runs Reinc challenges, but only if triggered manually or by autoGameFlow", "Auto Challenge Reinc", "main", "toggles", 50);
-tempSetting = new scriptSetting("autoRunes", false, "Automatically levels runes. Saves offerings just before getting some techs and at ant timer < some value", "Auto Runes", "main", "toggles", 60);
-tempSetting = new scriptSetting("autoReincUpgrades", false, "Automatically buys Particle upgrades", "Auto Particle Upgrades", "main", "toggles", 70);
-tempSetting = new scriptSetting("autoOpenCubes", false, "Automatically opens all cubes", "Auto Open Cubes", "main", "toggles", 80);
-tempSetting = new scriptSetting("autoPartBuildings", false, "Automatically buy particle buildings every script interval. For when you don't have c1x7 to c1x9 yet.", "Auto Particle Buildings", "main", "toggles", 90, true);
+tempSetting = new scriptSetting("autoRunes", false, "Automatically levels runes. Saves offerings just before getting some techs and at ant timer < some value", "Auto Runes", "main", "toggles", 40);
+tempSetting = new scriptSetting("autoReincUpgrades", false, "Automatically buys Particle upgrades", "Auto Particle Upgrades", "main", "toggles", 50);
+tempSetting = new scriptSetting("autoOpenCubes", false, "Automatically opens all cubes", "Auto Open Cubes", "main", "toggles", 60);
+tempSetting = new scriptSetting("autoPartBuildings", false, "Automatically buy particle buildings every script interval. For when you don't have w1x7 to w1x9 yet.", "Auto Particle Buildings", "main", "toggles", 70);
+tempSetting = new scriptSetting("autoResearch", false, "Automatically research techs from cheapest to most expensive. For when you don't have w1x10 yet.", "Auto Research", "main", "toggles", 80, true);
 
 // Logging Settings
 tempSetting = new scriptSetting("logLevel", 10, "How much to log. 10 prints all messages, 0 logs only script start.", "Log Level", "main", "log", 50);
@@ -233,6 +235,8 @@ scriptVariables.lastLogCounter = 0; //A
 scriptVariables.displayInitialized = false;
 scriptVariables.scriptInitialized = false;
 scriptVariables.settingsTabs = [];
+scriptVariables.researchTarget = null; //A
+scriptVariables.researchOrder = researchBaseCosts.map((val, ind)=>({value: val, index: ind})).sort((a, b)=>(a.value - b.value)).map(x => x.index); // Make a list of techs with costs, sort by cost, map back to a list of techs
 
 // Settings infrastructure
 function scriptSettingsSave() {
@@ -651,6 +655,7 @@ function scriptAutoGameFlow () {
     scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0;
     scriptVariables.currentTransChallenge = -1;
     scriptVariables.currentReincChallenge = -1;
+    scriptVariables.researchTarget = null;
 
     scriptVariables.currentAction = ""; //A
     scriptVariables.actionStep = -1; //A
@@ -1021,6 +1026,45 @@ function scriptAutoPartBuildings() {
   }
 }
 
+// Helper functions for Auto Research
+// Returns whether the research is maxed. SI blessing will need to be considered here.
+function scriptResearchIsMaxed(tech) {
+  return (player.researches[tech] >= researchMaxLevels[tech]);
+}
+
+// Returns whether the research is affordable.
+function scriptResearchIsAffordable(tech) {
+  return (player.researchPoints >= researchBaseCosts[tech]);
+}
+
+// This determines the current roomba target by filtering out all maxed techs, then taking the cheapest one that is left. If it returns 0 we are done, because that is the index of the null tech!
+function scriptGetNewResearchTarget() {
+  return scriptVariables.researchOrder.filter(tech => !scriptResearchIsMaxed(tech))[0];
+}
+
+// Research as many techs as possible, from cheapest to most expensive
+function scriptAutoResearch () {
+  if (scriptVariables.researchTarget === null || scriptResearchIsMaxed(scriptVariables.researchTarget)) scriptVariables.researchTarget = scriptGetNewResearchTarget();
+  
+  let i = 0; // Counter to prevent infinite loops
+  let temp = maxbuyresearch;
+  let temp2 = player.autoResearchToggle;
+  while (scriptVariables.researchTarget > 0 && scriptVariables.researchTarget <= 125 &&  scriptResearchIsAffordable(scriptVariables.researchTarget) && i < 200) {
+    // Buy max
+    maxbuyresearch = true;
+    player.autoResearchToggle = false;
+    buyResearch(scriptVariables.researchTarget, false);
+    
+    // If the tech is now maxed, get a new target
+    if (scriptResearchIsMaxed(scriptVariables.researchTarget)) scriptVariables.researchTarget = scriptGetNewResearchTarget();
+    i++;
+  }
+  maxbuyresearch = temp;
+  player.autoResearchToggle = temp2;
+}
+
+
+
 function scriptInitialize() {
   sLog(0, "Starting Script");
   resetCheck('challenge');
@@ -1041,12 +1085,13 @@ function scriptAutoAll () {
     if (scriptSettings.autoLog) scriptAutoLog();
     if (scriptSettings.autoGameFlow) scriptAutoGameFlow();
     if (scriptSettings.autoTalismans) scriptAutoTalismans();
-    if (scriptSettings.autoChallengeTrans) scriptAutoChallengeTrans();
-    if (scriptSettings.autoChallengeReinc) scriptAutoChallengeReinc();
+    scriptAutoChallengeTrans();
+    scriptAutoChallengeReinc();
     if (scriptSettings.autoRunes) scriptAutoRunes();
     if (scriptSettings.autoReincUpgrades) scriptAutoReincUpgrades();
     if (scriptSettings.autoOpenCubes) scriptAutoOpenCubes();
     if (scriptSettings.autoPartBuildings) scriptAutoPartBuildings();
+    if (scriptSettings.autoResearch) scriptAutoResearch();
   }
 }
 
