@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.10.0
+// @version      1.11.0
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,6 +38,9 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.11  18-Aug-20  Add Reincarnation Timer settings
+- Added settings to customize the reincarnation timer to the Flow tab
+
 1.10  18-Aug-20  Add Auto Research
 - Added Auto Research, this does the same as the w1x10 Roomba cube upgrade but works without the cube upgrade and is currently a bit faster. There's no harm in having both on.
 - Removed the Reinc and Trans Challenge toggles, they are now always on. Both settings were never about triggering a challenge run or not, just making it work at all when triggered by something else.
@@ -115,13 +118,18 @@ Initial version of the script. Game version: v1.011 TESTING! Update: July 22, 20
 
 /*
 TODO:
-- Option to limit each challenge completions
 - Log current speedup and maybe other game stats
-- Auto Research for pre-roomba?
-- Add settings save version as a hidden setting. Reset changed settings if needed and print a log message about changed or new settings and where they are.
+- Save some scriptVariables
+  * Add script version as a saved variable. Reset changed settings if needed and print a log message about changed or new settings and where they are.
+  * Save last challenge attempt particles
 - Print a message on new version
 - Add a changelog button
 - Show an alert when changing a setting that will only apply on reload
+- Add settings for reincarnation times
+- Add config to let auto research skip some techs
+- Add autobuyers for some mythos stuff maybe (autobuy mythos buildings, autobuy mythos upgrades, autobuy mythos autobuyers)
+- Overview of the last few ascensions (maybe check autotrimps graph thingy to see if I can do something like that)
+- Add a help tab that explains some features and interactions
 - Settings and dashboard GUI part 2
   * Auto-adjust width
   * Scrollbar if too long
@@ -172,6 +180,12 @@ tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data
 // Game flow settings
 tempSetting = new scriptSetting("flowAscendAtC10Completions", 1, "Ascend only if C10 has been completed at least this many times", "C10 for ascend", "flow", "ascend", 10);
 tempSetting = new scriptSetting("flowAscendImmediately", false, "Ascend once the target C10 completions have been reached, ignoring all other checks. May ascend without first respeccing talismans!", "Ascend ASAP", "flow", "ascend", 20);
+
+tempSetting = new scriptSetting("flowEarlyReincTime", 10, "Reincarnation timer for early ascension", "Early Reinc time", "flow", "reinc", 10);
+tempSetting = new scriptSetting("flowMidReincParts", 22, "Minimum particle exponent to switch to the Mid Reinc time", "Mid Reinc particles", "flow", "reinc", 20);
+tempSetting = new scriptSetting("flowMidReincTime", 10, "Reincarnation timer for middle of ascension", "Mid Reinc time", "flow", "reinc", 30);
+tempSetting = new scriptSetting("flowLateReincParts", 20000, "Minimum particle exponent to switch to the Late Reinc time", "Late Reinc particles", "flow", "reinc", 40);
+tempSetting = new scriptSetting("flowLateReincTime", 60, "Reincarnation timer for late ascension", "Late Reinc time", "flow", "reinc", 50);
 
 tempSetting = new scriptSetting("flowInitialWaitBeforeChallenges", 10, "How long to wait after ascension before challenges can be started", "Wait after Ascension", "flow", "challenges", 10);
 tempSetting = new scriptSetting("flowReincChallengePartMulti", 1.1, "Start reincarnation challenges only if particle exponent has multiplied at least this much since last time (or since script start)", "Reinc Particles Multi", "flow", "challenges", 20);
@@ -507,7 +521,9 @@ function scriptInitializeDisplay() {
     document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-log', '40%', 'Log'));
     document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-toggles', '20%', 'Toggles'));
     scriptCreateSettingsSection("script-settings-flow", "Flow", "script-settings", "script-settings-header");
-    document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-ascend', '22%', 'Ascension'));
+    document.getElementById('script-settings-flow').append(scriptCreateElement('<div id = "script-settings-flow-co11" class=scriptsettings-column style = "width: 22%"></div>'));
+    document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-ascend', '100%', 'Ascension'));
+    document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-reinc', '100%', 'Reincarnation'));
     document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-challenges', '39%', 'Challenges'));
     document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-blessings', '39%', 'Talismans, Blessings & Pushing'));
     scriptCreateSettingsSection("script-settings-runes", "Runes & Talismans", "script-settings", "script-settings-header");
@@ -595,10 +611,9 @@ function scriptAutoGameFlow () {
   let maxTalismanBonus = Math.max(window.rune1Talisman, window.rune2Talisman, window.rune3Talisman, window.rune4Talisman, window.rune5Talisman);
 
   // Determine desired reincarnation time
-  // TODO: Determine if > 60s is needed
-  if (player.upgrades[70] < 1) scriptVariables.targetReincTime = 10; // If you don't have the e22 particle upgrade, reincarnate every 30s to keep max obt up to date
-  else if (player.reincarnationPoints.exponent < 10000) scriptVariables.targetReincTime = 10;  // With the e22 particle upgrade but low particles, reincarnate every 60s to keep max obt fairly decent and quickly boost particles
-  else scriptVariables.targetReincTime = 10;// set very low because of current lategame balance //60000; // Auto Reincarnation should be on and set to 4440, if not reincarnate after a long time
+  if (player.reincarnationPoints.exponent < scriptSettings.flowMidReincParts) scriptVariables.targetReincTime = scriptSettings.flowEarlyReincTime; // Phase 1
+  else if (player.reincarnationPoints.exponent < scriptSettings.flowLateReincParts) scriptVariables.targetReincTime = scriptSettings.flowMidReincTime;  // Phase 2
+  else scriptVariables.targetReincTime = scriptSettings.flowLateReincTime; // Phase 3
 
   // Turn Ant Sacrifice back on if doing nothing
   if (scriptNoCurrentAction()) scriptSetAutoSac(true);
