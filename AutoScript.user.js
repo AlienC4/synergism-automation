@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.11.2
+// @version      1.11.3
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,6 +38,10 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.11.3 20-Aug-20  Minor Logging and GUI changes
+- Move Ascension log from level 2 to level 1, and add C/s to the line
+- Change some settings labels and tooltips
+
 1.11.2 20-Aug-20  Bugfix
 - Fix: Enable decimal inputs for settings GUI number fields in Firefox (and possible some other browsers)
 
@@ -138,6 +142,7 @@ TODO:
 - Add a help tab that explains some features and interactions
 - Auto-Sacrifice: spam sacrifice for first talisman upgrade fragments, adjust sacrifice timer (configurable, maybe depending on ant speed multi), force challenge pushes to happen at high ant timer (configurable, maybe in terms of percent of sacrifice timer)
 - Make script interval work without restart (use fast interval, but check if script interval is reached before doing stuff)
+- Tesseract upgrade autobuyer
 - Settings and dashboard GUI part 2
   * Auto-adjust width
   * Scrollbar if too long
@@ -177,9 +182,9 @@ tempSetting = new scriptSetting("autoGameFlow", false, "Reincarnate, Ascend, do 
 tempSetting = new scriptSetting("autoTalismans", false, "Automatically enhances and fortifies talismans and buys Mortuus ant", "Auto Talismans", "main", "toggles", 30);
 tempSetting = new scriptSetting("autoRunes", false, "Automatically levels runes. Saves offerings just before getting some techs and at ant timer < some value", "Auto Runes", "main", "toggles", 40);
 tempSetting = new scriptSetting("autoReincUpgrades", false, "Automatically buys Particle upgrades", "Auto Particle Upgrades", "main", "toggles", 50);
-tempSetting = new scriptSetting("autoOpenCubes", false, "Automatically opens all cubes", "Auto Open Cubes", "main", "toggles", 60);
+tempSetting = new scriptSetting("autoOpenCubes", false, "Automatically opens all Wowcubes", "Auto Open Cubes", "main", "toggles", 60);
 tempSetting = new scriptSetting("autoPartBuildings", false, "Automatically buy particle buildings every script interval. For when you don't have w1x7 to w1x9 yet.", "Auto Particle Buildings", "main", "toggles", 70);
-tempSetting = new scriptSetting("autoResearch", false, "Automatically research techs from cheapest to most expensive. For when you don't have w1x10 yet.", "Auto Research", "main", "toggles", 80, true);
+tempSetting = new scriptSetting("autoResearch", false, "Automatically research techs from cheapest to most expensive. For when you don't have w1x10 yet or need faster research.", "Auto Research", "main", "toggles", 80, true);
 
 // Logging Settings
 tempSetting = new scriptSetting("logLevel", 10, "How much to log. 10 prints all messages, 0 logs only script start.", "Log Level", "main", "log", 50);
@@ -196,15 +201,15 @@ tempSetting = new scriptSetting("flowLateReincParts", 20000, "Minimum particle e
 tempSetting = new scriptSetting("flowLateReincTime", 60, "Reincarnation timer for late ascension", "Late Reinc time", "flow", "reinc", 50);
 
 tempSetting = new scriptSetting("flowInitialWaitBeforeChallenges", 10, "How long to wait after ascension before challenges can be started", "Wait after Ascension", "flow", "challenges", 10);
-tempSetting = new scriptSetting("flowReincChallengePartMulti", 1.1, "Start reincarnation challenges only if particle exponent has multiplied at least this much since last time (or since script start)", "Reinc Particles Multi", "flow", "challenges", 20);
-tempSetting = new scriptSetting("flowReincChallengePartPlus", 1000, "Start reincarnation challenges only if particle exponened has increased at least this much (only one of the conditions needs to be true)", "Reinc Particles Plus", "flow", "challenges", 30);
-tempSetting = new scriptSetting("flowMinTimeBetweenReincChallenges", 60, "Minimum Ascension Counter (= realtime) between Reinc challenges", "Time between Reinc", "flow", "challenges", 40, true);
-tempSetting = new scriptSetting("flowTransChallengePartMulti", 1.1, "Start transcension challenges only if particle exponent has multiplied at least this much since last time (or since script start)", "Trans Particles Multi", "flow", "challenges", 50);
-tempSetting = new scriptSetting("flowTransChallengePartPlus", 1000, "Same as reinc", "Trans Particles Plus", "flow", "challenges", 60);
-tempSetting = new scriptSetting("flowMinTimeBetweenTransChallenges", 60, "Same as reinc", "Time between Trans", "flow", "challenges", 70);
+tempSetting = new scriptSetting("flowReincChallengePartMulti", 1.1, "Start reincarnation challenges only if particle exponent has multiplied at least this much since last time (or since script start)", "Reinc C Particles Multi", "flow", "challenges", 20);
+tempSetting = new scriptSetting("flowReincChallengePartPlus", 1000, "Start reincarnation challenges only if particle exponent has increased at least this much (only one of the conditions needs to be true)", "Reinc C Particles Plus", "flow", "challenges", 30);
+tempSetting = new scriptSetting("flowMinTimeBetweenReincChallenges", 60, "Minimum Ascension Counter (= realtime) between Reinc challenges. Also minimum Time after ascension.", "Time between Reinc C", "flow", "challenges", 40, true);
+tempSetting = new scriptSetting("flowTransChallengePartMulti", 1.1, "Start transcension challenges only if particle exponent has multiplied at least this much since last time (or since script start)", "Trans C Particles Multi", "flow", "challenges", 50);
+tempSetting = new scriptSetting("flowTransChallengePartPlus", 1000, "Start transcension challenges only if particle exponent has increased at least this much (only one of the conditions needs to be true)", "Trans C Particles Plus", "flow", "challenges", 60);
+tempSetting = new scriptSetting("flowMinTimeBetweenTransChallenges", 60, "Minimum Ascension Counter (= realtime) between Transcension challenges. Also minimum Time after ascension.", "Time between Trans C", "flow", "challenges", 70);
 
-tempSetting = new scriptSetting("flowStartSavingOfferingsRuneLevel", 1000, "Post-respec prism rune level to start saving offerings for respecs", "Start Saving Offerings Level", "flow", "blessings", 10);
-tempSetting = new scriptSetting("flowRespecToBlessingsRuneLevel", 4000, "Post-respec prism rune level to respec into 1 3 5", "Respec to 135 Level", "flow", "blessings", 10);
+tempSetting = new scriptSetting("flowStartSavingOfferingsRuneLevel", 1000, "Post-respec prism rune level to start saving offerings for respecs", "Start Saving Offerings Prism Level", "flow", "blessings", 10);
+tempSetting = new scriptSetting("flowRespecToBlessingsRuneLevel", 4000, "Post-respec prism rune level to respec into 1 3 5", "Respec to 135 Prism Level", "flow", "blessings", 10);
 tempSetting = new scriptSetting("flowPushTalismanLevel", 1, "Minimum Talisman 1 level to start Challenge Pushes", "Minimum Talisman 1 enhance for pushing", "flow", "blessings", 10);
 tempSetting = new scriptSetting("flowKeepPushingWithoutMaxedTalis", false, "false: Do a challenge push with rune respec only if Talisman levels have changed, or when talismans are maxed push when ant levels have changed enough. true: Keep pushing if ant levels change enough, even when talismans are not maxed", "Keep pushing without Talisman enhance", "flow", "blessings", 10);
 tempSetting = new scriptSetting("flowPushAntChange", 300, "How much the sum of ant generator levels (excluding first one) needs to change to start another push", "Ant change for push", "flow", "blessings", 10);
@@ -229,9 +234,9 @@ tempSetting = new scriptSetting("runeWeights", [1, 2, 1, 3, 4], "Weights for how
 tempSetting = new scriptSetting("runeAntTimer", 10, "Will not spend offerings until the sacrifice timer has reached this amount of seconds", "Minimum Ant timer", "runes", "runes", 30);
 tempSetting = new scriptSetting("runeSpendingCap", 1e7, "Spend at most this many offerings at once to keep the script from lagging. Set to 0 to turn off. Clamped to between 1 and 1e8 if the below fast spending cheat is turned off.", "Offering spending cap", "runes", "runes", 40);
 tempSetting = new scriptSetting("runeFastSpendCheat", false, "Enable spending an arbitrary amount of offerings instantly. You can turn off the above limiter when using this.", "Fast offering spending cheat", "runes", "runes", 45, true);
-tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.", "5x3 wait", "runes", "runes", 50);
-tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16", "4x16 wait", "runes", "runes", 60);
-tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17", "4x17 wait", "runes", "runes", 70);
+tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.", "5x3 wait time", "runes", "runes", 50);
+tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16", "4x16 wait time", "runes", "runes", 60);
+tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17", "4x17 wait time", "runes", "runes", 70);
 
 
 // Variables, don't change manually
@@ -531,7 +536,7 @@ function scriptInitializeDisplay() {
     scriptCreateSettingsSection("script-settings-flow", "Flow", "script-settings", "script-settings-header");
     document.getElementById('script-settings-flow').append(scriptCreateElement('<div id = "script-settings-flow-co11" class=scriptsettings-column style = "width: 22%"></div>'));
     document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-ascend', '100%', 'Ascension'));
-    document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-reinc', '100%', 'Reincarnation'));
+    document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-reinc', '100%', 'Reincarnation Timer'));
     document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-challenges', '39%', 'Challenges'));
     document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-blessings', '39%', 'Talismans, Blessings & Pushing'));
     scriptCreateSettingsSection("script-settings-runes", "Runes & Talismans", "script-settings", "script-settings-header");
@@ -647,7 +652,8 @@ function scriptAutoGameFlow () {
   // Step 2: maybe some initial stuff, for now no further steps
   if (scriptSettings.flowAscendAtC10Completions > 0 && player.challengecompletions["ten"] >= scriptSettings.flowAscendAtC10Completions
       && (scriptSettings.flowAscendImmediately  || (scriptNoCurrentAction() && player.runeshards > 400000))) {
-    sLog(2, "Ascending with " + player.challengecompletions.ten + " C10 completions after " + player.ascensionCounter + " seconds");
+    let c = player.cubesThisAscension.challenges, r = player.cubesThisAscension.reincarnation, a = player.cubesThisAscension.ascension;
+    sLog(1, "Ascending with " + player.challengecompletions.ten + " C10 completions after " + player.ascensionCounter + " seconds. C/s: " + (format((c + r + a) / player.ascensionCounter, 4, true)));
 
     if (scriptSettings.autoLog) scriptLogStuff();
 
