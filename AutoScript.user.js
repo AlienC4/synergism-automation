@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.11.1
+// @version      1.11.2
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,6 +38,9 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.11.2 20-Aug-20  Bugfix
+- Fix: Enable decimal inputs for settings GUI number fields in Firefox (and possible some other browsers)
+
 1.11.1 18-Aug-20  Bugfix
 - Fix: Rune level calculation for offerings saving and blessings respec corrected for game changes, and now works in Tampermonkey
 
@@ -133,6 +136,8 @@ TODO:
 - Add autobuyers for some mythos stuff maybe (autobuy mythos buildings, autobuy mythos upgrades, autobuy mythos autobuyers)
 - Overview of the last few ascensions (maybe check autotrimps graph thingy to see if I can do something like that)
 - Add a help tab that explains some features and interactions
+- Auto-Sacrifice: spam sacrifice for first talisman upgrade fragments, adjust sacrifice timer (configurable, maybe depending on ant speed multi), force challenge pushes to happen at high ant timer (configurable, maybe in terms of percent of sacrifice timer)
+- Make script interval work without restart (use fast interval, but check if script interval is reached before doing stuff)
 - Settings and dashboard GUI part 2
   * Auto-adjust width
   * Scrollbar if too long
@@ -378,7 +383,7 @@ if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptChangeNumberFi
 function scriptCreateNumberField(id, setting, label, mouseover, arrayCount = 0) {
   if (arrayCount === 0) {
     let elementString = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'" for = "'+id+'">'+label+'</label>'+
-                  '<input type="number" id="'+id+'" class = "scriptsettings-numberfield" title="'+mouseover+'" value = "'+scriptSettings[setting]+'" '+
+                  '<input type="number" step="any" id="'+id+'" class = "scriptsettings-numberfield" title="'+mouseover+'" value = "'+scriptSettings[setting]+'" '+
                   'onchange = "scriptChangeNumberField(\''+setting+'\')"></div>';
     let element = scriptCreateElement(elementString);
     element.addEventListener("keydown", function(e) {e.stopPropagation();});
@@ -386,7 +391,7 @@ function scriptCreateNumberField(id, setting, label, mouseover, arrayCount = 0) 
   } else {
     let elementString = '<div class=scriptsettings-container><label class = "scriptsettings-label" title = "'+mouseover+'">'+label+'</label><div class = "scriptsettings-arraycontainer-number">'
     for (let i = 0; i < arrayCount; i++) {
-      elementString += '<input type="number" id="'+id+'-'+i+'" class = "scriptsettings-numberfield" title="'+mouseover+'" value = "'+scriptSettings[setting][i]+'" '+
+      elementString += '<input type="number" step="any" id="'+id+'-'+i+'" class = "scriptsettings-numberfield" title="'+mouseover+'" value = "'+scriptSettings[setting][i]+'" '+
                          'style = "width: '+(95/arrayCount)+'%" '+
                          'onchange = "scriptChangeNumberField(\''+setting+'\', '+i+')">'
     }
