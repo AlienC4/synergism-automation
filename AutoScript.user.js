@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.11.3
+// @version      1.11.4
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,7 +38,7 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
-1.12   21-Aug-20  Fix for game update
+1.11.4 21-Aug-20  Fix for game update
 - Game version: v1.011 TESTING! Update: August 21, 2020 1:15AM PDT
 - Fix: challenges work again
 
