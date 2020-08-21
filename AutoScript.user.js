@@ -38,6 +38,10 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.12   21-Aug-20  Fix for game update
+- Game version: v1.011 TESTING! Update: August 21, 2020 1:15AM PDT
+- Fix: challenges work again
+
 1.11.3 20-Aug-20  Minor Logging and GUI changes
 - Move Ascension log from level 2 to level 1, and add C/s to the line
 - Change some settings labels and tooltips
@@ -143,6 +147,8 @@ TODO:
 - Auto-Sacrifice: spam sacrifice for first talisman upgrade fragments, adjust sacrifice timer (configurable, maybe depending on ant speed multi), force challenge pushes to happen at high ant timer (configurable, maybe in terms of percent of sacrifice timer)
 - Make script interval work without restart (use fast interval, but check if script interval is reached before doing stuff)
 - Tesseract upgrade autobuyer
+- Figure out something to improve challenge timer options. The wait after ascension and the wait after script start are weird.
+- Maybe an option to ascend into a specific ascension challenge
 - Settings and dashboard GUI part 2
   * Auto-adjust width
   * Scrollbar if too long
@@ -569,10 +575,10 @@ function scriptLogStuff() {
 
   // Logs Challenge completions
   sLog(2, "Challenge Info: " +
-  "Trans: " + player.highestchallengecompletions.one+"/"+player.highestchallengecompletions.two+"/"+player.highestchallengecompletions.three+"/"+player.highestchallengecompletions.four+"/"+
-  player.highestchallengecompletions.five+"  "+
-  "Reinc: " + player.highestchallengecompletions.six+"/"+player.highestchallengecompletions.seven+"/"+player.highestchallengecompletions.eight+"/"+player.highestchallengecompletions.nine+"/"+
-  player.highestchallengecompletions.ten);
+  "Trans: " + player.highestchallengecompletions[1]+"/"+player.highestchallengecompletions[2]+"/"+player.highestchallengecompletions[3]+"/"+player.highestchallengecompletions[4]+"/"+
+  player.highestchallengecompletions[5]+"  "+
+  "Reinc: " + player.highestchallengecompletions[6]+"/"+player.highestchallengecompletions[7]+"/"+player.highestchallengecompletions[8]+"/"+player.highestchallengecompletions[9]+"/"+
+  player.highestchallengecompletions[10]);
   // Logs Rune Levels, Talisman Rarity, Talisman levels
   sLog(2, "Rune Info:      " +
   "R: " + player.runelevels[0]+"/"+player.runelevels[1]+"/"+player.runelevels[2]+"/"+player.runelevels[3]+"/"+player.runelevels[4]+"   "+
@@ -650,16 +656,16 @@ function scriptAutoGameFlow () {
   // Needed Shards are at 800k to match up with the push condition. The script will push until it no longer can significantly boost ants by it, then ascend.
   // Step 1: Respec Talismans, Ascend, reset Variables
   // Step 2: maybe some initial stuff, for now no further steps
-  if (scriptSettings.flowAscendAtC10Completions > 0 && player.challengecompletions["ten"] >= scriptSettings.flowAscendAtC10Completions
+  if (scriptSettings.flowAscendAtC10Completions > 0 && player.challengecompletions[10] >= scriptSettings.flowAscendAtC10Completions
       && (scriptSettings.flowAscendImmediately  || (scriptNoCurrentAction() && player.runeshards > 400000))) {
     let c = player.cubesThisAscension.challenges, r = player.cubesThisAscension.reincarnation, a = player.cubesThisAscension.ascension;
-    sLog(1, "Ascending with " + player.challengecompletions.ten + " C10 completions after " + player.ascensionCounter + " seconds. C/s: " + (format((c + r + a) / player.ascensionCounter, 4, true)));
+    sLog(1, "Ascending with " + player.challengecompletions[10] + " C10 completions after " + player.ascensionCounter + " seconds. C/s: " + (format((c + r + a) / player.ascensionCounter, 4, true)));
 
     if (scriptSettings.autoLog) scriptLogStuff();
 
     // Exit any running challenges
-    if (player.currentChallenge != "") resetCheck('challenge');
-    if (player.currentChallengeRein != "") resetCheck('reincarnationchallenge');
+    if (player.currentChallenge.transcension != 0) resetCheck('challenge');
+    if (player.currentChallenge.reincarnation != 0) resetCheck('reincarnationchallenge');
     
     // Respec to 2 4 5
     if (player.runeshards > 400000) {
@@ -694,7 +700,7 @@ function scriptAutoGameFlow () {
   }
 
   // Handle doing challenges occasionally (before blessings)
-  if (scriptNoCurrentAction() && (!scriptVariables.ascensionBlessingRespecDone || player.challengecompletions["nine"] === 0) && player.ascensionCounter > scriptSettings.flowInitialWaitBeforeChallenges) {
+  if (scriptNoCurrentAction() && (!scriptVariables.ascensionBlessingRespecDone || player.challengecompletions[9] === 0) && player.ascensionCounter > scriptSettings.flowInitialWaitBeforeChallenges) {
     // Do Reincarnation Challenges if particles have changed significantly
     if (scriptVariables.lastReincChallengeCounter + scriptSettings.flowMinTimeBetweenReincChallenges < player.ascensionCounter && scriptVariables.currentTransChallenge < 0
     && (player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts * scriptSettings.flowReincChallengePartMulti || player.reincarnationPoints.exponent > scriptVariables.lastReincChallengeParts + scriptSettings.flowReincChallengePartPlus)) {
@@ -806,7 +812,7 @@ function scriptAutoGameFlow () {
 
 // Automatically levels and enhances talismans (only the ones set in settings are enhanced)
 function scriptAutoTalismans () {
-  if (!(player.challengecompletions.nine > 0.5)) return; // Don't try this if talismans are not available
+  if (!(player.challengecompletions[9] > 0.5)) return; // Don't try this if talismans are not available
 
   // Only act every talismanInterval
   scriptVariables.talismanCounter += scriptSettings.scriptInterval;
@@ -859,17 +865,17 @@ function scriptAutoChallengeTrans() {
   }
 
   // Abort current trans challenge if it is not the one we are trying to run to prevent getting stuck
-  if (player.currentChallenge != "" && player.currentChallenge != ordinals[scriptVariables.currentTransChallenge]) {
+  if (player.currentChallenge.transcension != 0 && player.currentChallenge.transcension != scriptVariables.currentTransChallenge) {
     resetCheck('challenge');
   }
   
   // move to next challenge if there is no current challenge, the current one is taking too long, or max completions are reached, and stop challenging after c5 is done
-  if (player.currentChallenge == ""
+  if (player.currentChallenge.transcension === 0
       || player.transcendcounter > scriptSettings.challengeMaxTransDuration
       || (scriptVariables.currentTransChallenge >= 1 && scriptVariables.currentTransChallenge <= 5
-          && player.highestchallengecompletions[ordinals[scriptVariables.currentTransChallenge]] >= scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1])
+          && player.highestchallengecompletions[scriptVariables.currentTransChallenge] >= scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1])
       ) {
-    if (player.currentChallenge != "") {
+    if (player.currentChallenge.transcension !== 0) {
       resetCheck('challenge');
     }
     if (scriptVariables.currentTransChallenge < 5) {
@@ -884,8 +890,8 @@ function scriptAutoChallengeTrans() {
     // Don't try if coins or particles are too low
     while (scriptVariables.currentTransChallenge < 6) {
       if (player.reincarnationPoints.exponent >= scriptSettings.challengeMinTransParts
-          && player.challengecompletions[ordinals[scriptVariables.currentTransChallenge]] < scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1]) {
-        toggleChallenges(ordinals[scriptVariables.currentTransChallenge]);
+          && player.challengecompletions[scriptVariables.currentTransChallenge] < scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1]) {
+        toggleChallenges(scriptVariables.currentTransChallenge);
         break;
       }
       scriptVariables.currentTransChallenge++;
@@ -910,17 +916,17 @@ function scriptAutoChallengeReinc() {
   }
   
   // Abort current reinc challenge if it is not the one we are trying to run to prevent getting stuck
-  if (player.currentChallengeRein != "" && player.currentChallengeRein !== ordinals[scriptVariables.currentReincChallenge]) {
+  if (player.currentChallenge.reincarnation !== 0 && player.currentChallenge.reincarnation !== scriptVariables.currentReincChallenge) {
     resetCheck('reincarnationchallenge');
   }
 
   // move to next challenge if there is no current challenge, the current one is taking too long, or max completions are reached, and stop challenging after c5 is done
-  if (player.currentChallengeRein == ""
+  if (player.currentChallenge.reincarnation === 0
       || player.reincarnationcounter > scriptSettings.challengeMaxReincDuration
       || (scriptVariables.currentReincChallenge >= 6 && scriptVariables.currentReincChallenge < 11
-          && player.challengecompletions[ordinals[scriptVariables.currentReincChallenge]] >= scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6])
+          && player.challengecompletions[scriptVariables.currentReincChallenge] >= scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6])
       ) {
-    if (player.currentChallengeRein != "") {
+    if (player.currentChallenge.reincarnation !== 0) {
       resetCheck('reincarnationchallenge');
     }
     if (scriptVariables.currentReincChallenge < 11) {
@@ -936,8 +942,8 @@ function scriptAutoChallengeReinc() {
     // Don't try if particles are too low
     while (scriptVariables.currentReincChallenge < 11) {
       if (player.reincarnationPoints.exponent >= scriptSettings.challengeMinReincParts[scriptVariables.currentReincChallenge - 6]
-          && player.challengecompletions[ordinals[scriptVariables.currentReincChallenge]] < scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6]) {
-        toggleChallenges(ordinals[scriptVariables.currentReincChallenge]);
+          && player.challengecompletions[scriptVariables.currentReincChallenge] < scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6]) {
+        toggleChallenges(scriptVariables.currentReincChallenge);
         break;
       }
       scriptVariables.currentReincChallenge++;
