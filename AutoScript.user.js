@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.11.5
+// @version      1.11.6
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,6 +38,9 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.11.6 21-Aug-20  Log level changes
+- Made some changes to logging levels, set it to 1 to only see ascension time and C/s. Periodic stats logging has moved from level 2 to level 3.
+
 1.11.5 21-Aug-20  Bugfixes and minor settings change
 - A negative challenge completion limit setting (e.g. -1) means no limit now
 - Fix: sane formatting for the ascension time in the log
@@ -189,7 +192,7 @@ tempSetting = new scriptSetting("autoTurnedOn", true, "Master Switch for the scr
 tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds. Only refreshed on reload.", "Script Interval", "main", "toggles", 150);
 
 // Toggles for Script features
-tempSetting = new scriptSetting("autoLog", true, "Does some periodic logging, as long as logLevel is at least 2", "Auto Log", "main", "toggles", 10);
+tempSetting = new scriptSetting("autoLog", true, "Does some periodic logging, as long as logLevel is at least 3", "Auto Log", "main", "toggles", 10);
 tempSetting = new scriptSetting("autoGameFlow", false, "Reincarnate, Ascend, do challenges, respec runes", "Auto Flow", "main", "toggles", 20);
 tempSetting = new scriptSetting("autoTalismans", false, "Automatically enhances and fortifies talismans and buys Mortuus ant", "Auto Talismans", "main", "toggles", 30);
 tempSetting = new scriptSetting("autoRunes", false, "Automatically levels runes. Saves offerings just before getting some techs and at ant timer < some value", "Auto Runes", "main", "toggles", 40);
@@ -200,7 +203,7 @@ tempSetting = new scriptSetting("autoResearch", false, "Automatically research t
 
 // Logging Settings
 tempSetting = new scriptSetting("logLevel", 10, "How much to log. 10 prints all messages, 0 logs only script start.", "Log Level", "main", "log", 50);
-tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data to console every X seconds. Logging level needs to be at least 2 for this to work.", "Log Interval", "main", "log", 60);
+tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data to console every X seconds. Logging level needs to be at least 3 for this to work.", "Log Interval", "main", "log", 60);
 
 // Game flow settings
 tempSetting = new scriptSetting("flowAscendAtC10Completions", 1, "Ascend only if C10 has been completed at least this many times", "C10 for ascend", "flow", "ascend", 10);
@@ -578,16 +581,16 @@ function sLog(level, text) {
 
 // Logs stuff periodically
 function scriptLogStuff() {
-  sLog(2, "=== Info Dump at Ascension timer " + Math.floor(player.ascensionCounter) + " ===");
+  sLog(3, "=== Info Dump at Ascension timer " + Math.floor(player.ascensionCounter) + " ===");
 
   // Logs Challenge completions
-  sLog(2, "Challenge Info: " +
+  sLog(3, "Challenge Info: " +
   "Trans: " + player.highestchallengecompletions[1]+"/"+player.highestchallengecompletions[2]+"/"+player.highestchallengecompletions[3]+"/"+player.highestchallengecompletions[4]+"/"+
   player.highestchallengecompletions[5]+"  "+
   "Reinc: " + player.highestchallengecompletions[6]+"/"+player.highestchallengecompletions[7]+"/"+player.highestchallengecompletions[8]+"/"+player.highestchallengecompletions[9]+"/"+
   player.highestchallengecompletions[10]);
   // Logs Rune Levels, Talisman Rarity, Talisman levels
-  sLog(2, "Rune Info:      " +
+  sLog(3, "Rune Info:      " +
   "R: " + player.runelevels[0]+"/"+player.runelevels[1]+"/"+player.runelevels[2]+"/"+player.runelevels[3]+"/"+player.runelevels[4]+"   "+
   "T: " + player.talismanRarity[1] + "x" + player.talismanLevels[1] + "/" +
   player.talismanRarity[2] + "x" + player.talismanLevels[2] + "/" +
@@ -600,7 +603,7 @@ function scriptLogStuff() {
 
   // Logs some Cube stats
   let c = player.cubesThisAscension.challenges, r = player.cubesThisAscension.reincarnation, a = player.cubesThisAscension.ascension;
-  sLog(2, "Cube Info:      " + (format((c + r + a) / player.ascensionCounter, 4, true)) + "C/s   current: " + Math.floor(player.wowCubes) + "   blessings: " + Object.values(player.cubeBlessings).reduce((s, t) => s + t));
+  sLog(3, "Cube Info:      " + (format((c + r + a) / player.ascensionCounter, 4, true)) + "C/s   current: " + Math.floor(player.wowCubes) + "   blessings: " + Object.values(player.cubeBlessings).reduce((s, t) => s + t));
 }
 
 function scriptAutoLog() {
@@ -677,7 +680,7 @@ function scriptAutoGameFlow () {
     mirrorTalismanStats = [null, 1, -1, 1, -1, 1]; //Respec to 1 3 5
     respecTalismanConfirm(8);
     scriptVariables.ascensionBlessingRespecDone = true;
-    sLog(2, "Respecced Talismans to 135 for blessings");
+    sLog(5, "Respecced Talismans to 135 for blessings");
   }
 
   // Handle Ascension
@@ -709,7 +712,7 @@ function scriptAutoGameFlow () {
     // reset script variables
     scriptResetVariables();
 
-    sLog(1, "Ascended");
+    sLog(2, "Ascended");
   }
 
   // Handle doing challenges occasionally (before blessings)
@@ -762,7 +765,7 @@ function scriptAutoGameFlow () {
     mirrorTalismanStats = [null, 1, 1, -1, 1, -1]; //Respec to 1 2 4
     respecTalismanConfirm(8);
     scriptVariables.pushLastReincTimer = player.reincarnationcounter;
-    sLog(4, "Started a challenge push");
+    sLog(5, "Started a challenge push");
   }
   // Step 1: Reincarnate
   if (scriptVariables.currentAction === "push" && (scriptVariables.actionStep === 1) &&
@@ -1006,17 +1009,17 @@ function scriptAutoRunes() {
   // Save up when rune exp boosting techs are close, also if ants are available don't spend before 10m ant time
   let obtPerSec = calculateAutomaticObtainium();
   if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 1) && scriptSettings.runeTech5x3Wait > 0 && player.researches[23] < researchMaxLevels[23] && obtPerSec > researchBaseCosts[23] / scriptSettings.runeTech5x3Wait) {
-    if (scriptVariables.autoRunesWaitForTech === 0) sLog(5, "Saving Offerings for 5x3");
+    if (scriptVariables.autoRunesWaitForTech === 0) sLog(7, "Saving Offerings for 5x3");
     scriptVariables.autoRunesWaitForTech = 1;
     return;
   }
   if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 2) && scriptSettings.runeTech4x16Wait > 0 && player.researches[91] < researchMaxLevels[91] && obtPerSec > researchBaseCosts[91] / scriptSettings.runeTech4x16Wait) {
-    if (scriptVariables.autoRunesWaitForTech === 0) sLog(5, "Saving Offerings for 4x16");
+    if (scriptVariables.autoRunesWaitForTech === 0) sLog(7, "Saving Offerings for 4x16");
     scriptVariables.autoRunesWaitForTech = 2;
     return;
   }
   if ((scriptVariables.autoRunesWaitForTech === 0 || scriptVariables.autoRunesWaitForTech === 3) && scriptSettings.runeTech4x17Wait > 0 && player.researches[92] < researchMaxLevels[92] && obtPerSec > researchBaseCosts[92] / scriptSettings.runeTech4x17Wait) {
-    if (scriptVariables.autoRunesWaitForTech === 0) sLog(5, "Saving Offerings for 4x17");
+    if (scriptVariables.autoRunesWaitForTech === 0) sLog(7, "Saving Offerings for 4x17");
     scriptVariables.autoRunesWaitForTech = 3;
     return;
   }
