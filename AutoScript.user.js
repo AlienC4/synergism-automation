@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.11.4
+// @version      1.11.5
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,6 +38,12 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.11.5 21-Aug-20  Bugfixes and minor settings change
+- A negative challenge completion limit setting (e.g. -1) means no limit now
+- Fix: sane formatting for the ascension time in the log
+- Fix: Reset the script state after manual ascensions and ascension challenge completions
+- Fix: Account for C14 max tech level reward in autoresearch
+
 1.11.4 21-Aug-20  Fix for game update
 - Game version: v1.011 TESTING! Update: August 21, 2020 1:15AM PDT
 - Fix: challenges work again
@@ -226,12 +232,12 @@ tempSetting = new scriptSetting("talismansEnhance", [true, true, false, false, f
 
 // Auto Trans Challenge settings
 tempSetting = new scriptSetting("challengeMaxTransDuration", 2, "How long to wait for completion of trans challenges (trans counter)", "Max duration", "challenges", "trans", 10);
-tempSetting = new scriptSetting("challengeMaxTransCompletions", [1000, 1000, 1000, 1000, 1000], "How many completions of each transcension challenge to attempt. Might overshoot a bit depending on script interval.", "Max Completions", "challenges", "trans", 20);
+tempSetting = new scriptSetting("challengeMaxTransCompletions", [1000, 1000, 1000, 1000, 1000], "How many completions of each transcension challenge to attempt. Might overshoot a bit depending on script interval. Set to -1 for unlimited.", "Max Completions", "challenges", "trans", 20);
 tempSetting = new scriptSetting("challengeMinTransParts", 0, "Minimum particle exponent to start transcension challenges", "Min Particles exponent", "challenges", "trans", 40);
 
 // Auto Reinc Challenge settings
 tempSetting = new scriptSetting("challengeMaxReincDuration", 10, "How long to wait for completion of reinc challenges (reinc counter)", "Max duration", "challenges", "reinc", 10);
-tempSetting = new scriptSetting("challengeMaxReincCompletions", [30, 30, 30, 30, 30], "How many completions of each reincarnation challenge to attempt. Might overshoot a bit depending on script interval.", "Max Completions", "challenges", "reinc", 20);
+tempSetting = new scriptSetting("challengeMaxReincCompletions", [30, 30, 30, 30, 30], "How many completions of each reincarnation challenge to attempt. Might overshoot a bit depending on script interval. Set to -1 for unlimited.", "Max Completions", "challenges", "reinc", 20);
 tempSetting = new scriptSetting("challengeMinReincParts", [0, 20, 200, 800, 90000], "Minimum particles exponent to start each trans challenge", "Min Particles exponents", "challenges", "reinc", 30);
 
 // Auto Runes settings
@@ -270,6 +276,7 @@ scriptVariables.scriptInitialized = false;
 scriptVariables.settingsTabs = [];
 scriptVariables.researchTarget = null; //A
 scriptVariables.researchOrder = researchBaseCosts.map((val, ind)=>({value: val, index: ind})).sort((a, b)=>(a.value - b.value)).map(x => x.index); // Make a list of techs with costs, sort by cost, map back to a list of techs
+scriptVariables.lastAscensionCounter = player.ascensionCounter; //A
 
 // Settings infrastructure
 function scriptSettingsSave() {
@@ -625,6 +632,28 @@ function scriptNoCurrentAction() {
   return (scriptVariables.currentAction === "" && scriptVariables.currentTransChallenge < 0 && scriptVariables.currentReincChallenge < 0);
 }
 
+// Resets script variables after ascension
+function scriptResetVariables() {
+  scriptVariables.saveOfferingsForRespecs = false; //A
+  scriptVariables.pushLastTalismanSum = player.talismanRarity.reduce( (sum, current) => sum + current, 0 ); //A
+  scriptVariables.pushLastAntSum = scriptCalculateAntSum(false); //A
+  scriptVariables.lastReincChallengeParts = 0; //A
+  scriptVariables.lastTransChallengeParts = 0; //A
+  scriptVariables.autoRunesWaitForTech = 0; //A
+  scriptVariables.ascensionBlessingRespecDone = player.talismanOne.reduce(((result,value,index)=>{let checkArray = [null, 1, -1, 1, -1, 1]; return value === checkArray[index] && result;}), true); //A
+  scriptVariables.lastTransChallengeCounter = -1000;
+  scriptVariables.lastReincChallengeCounter = 0;
+  scriptVariables.lastLogCounter = 0;
+  scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0;
+  scriptVariables.currentTransChallenge = -1;
+  scriptVariables.currentReincChallenge = -1;
+  scriptVariables.researchTarget = null;
+  scriptVariables.lastAscensionCounter = player.ascensionCounter;
+
+  scriptVariables.currentAction = ""; //A
+  scriptVariables.actionStep = -1; //A
+}
+
 // Handles the Game flow, starting challenges, respeccing talismans, reincarnating early, and so on. Does not ascend.
 function scriptAutoGameFlow () {
   let maxTalismanBonus = Math.max(rune1Talisman, rune2Talisman, rune3Talisman, rune4Talisman, rune5Talisman);
@@ -659,7 +688,7 @@ function scriptAutoGameFlow () {
   if (scriptSettings.flowAscendAtC10Completions > 0 && player.challengecompletions[10] >= scriptSettings.flowAscendAtC10Completions
       && (scriptSettings.flowAscendImmediately  || (scriptNoCurrentAction() && player.runeshards > 400000))) {
     let c = player.cubesThisAscension.challenges, r = player.cubesThisAscension.reincarnation, a = player.cubesThisAscension.ascension;
-    sLog(1, "Ascending with " + player.challengecompletions[10] + " C10 completions after " + player.ascensionCounter + " seconds. C/s: " + (format((c + r + a) / player.ascensionCounter, 4, true)));
+    sLog(1, "Ascending with " + player.challengecompletions[10] + " C10 completions after " + format(player.ascensionCounter, 3, true) + " seconds. C/s: " + format((c + r + a) / player.ascensionCounter, 4, true));
 
     if (scriptSettings.autoLog) scriptLogStuff();
 
@@ -678,23 +707,7 @@ function scriptAutoGameFlow () {
     scriptSetAutoSac(true);
 
     // reset script variables
-    scriptVariables.saveOfferingsForRespecs = false; //A
-    scriptVariables.pushLastTalismanSum = player.talismanRarity.reduce( (sum, current) => sum + current, 0 ); //A
-    scriptVariables.pushLastAntSum = scriptCalculateAntSum(false); //A
-    scriptVariables.lastReincChallengeParts = 0; //A
-    scriptVariables.lastTransChallengeParts = 0; //A
-    scriptVariables.autoRunesWaitForTech = 0; //A
-    scriptVariables.ascensionBlessingRespecDone = false;
-    scriptVariables.lastTransChallengeCounter = -1000;
-    scriptVariables.lastReincChallengeCounter = 0;
-    scriptVariables.lastLogCounter = 0;
-    scriptVariables.hasUpgrade3x8 = player.cubeUpgrades[28] > 0;
-    scriptVariables.currentTransChallenge = -1;
-    scriptVariables.currentReincChallenge = -1;
-    scriptVariables.researchTarget = null;
-
-    scriptVariables.currentAction = ""; //A
-    scriptVariables.actionStep = -1; //A
+    scriptResetVariables();
 
     sLog(1, "Ascended");
   }
@@ -873,7 +886,8 @@ function scriptAutoChallengeTrans() {
   if (player.currentChallenge.transcension === 0
       || player.transcendcounter > scriptSettings.challengeMaxTransDuration
       || (scriptVariables.currentTransChallenge >= 1 && scriptVariables.currentTransChallenge <= 5
-          && player.highestchallengecompletions[scriptVariables.currentTransChallenge] >= scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1])
+          && player.highestchallengecompletions[scriptVariables.currentTransChallenge] >= scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1]
+          && scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1] >= 0)
       ) {
     if (player.currentChallenge.transcension !== 0) {
       resetCheck('challenge');
@@ -890,7 +904,9 @@ function scriptAutoChallengeTrans() {
     // Don't try if coins or particles are too low
     while (scriptVariables.currentTransChallenge < 6) {
       if (player.reincarnationPoints.exponent >= scriptSettings.challengeMinTransParts
-          && player.challengecompletions[scriptVariables.currentTransChallenge] < scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1]) {
+          && (player.challengecompletions[scriptVariables.currentTransChallenge] < scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1]
+              || scriptSettings.challengeMaxTransCompletions[scriptVariables.currentTransChallenge - 1] < 0))
+      {
         toggleChallenges(scriptVariables.currentTransChallenge);
         break;
       }
@@ -924,7 +940,8 @@ function scriptAutoChallengeReinc() {
   if (player.currentChallenge.reincarnation === 0
       || player.reincarnationcounter > scriptSettings.challengeMaxReincDuration
       || (scriptVariables.currentReincChallenge >= 6 && scriptVariables.currentReincChallenge < 11
-          && player.challengecompletions[scriptVariables.currentReincChallenge] >= scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6])
+          && player.challengecompletions[scriptVariables.currentReincChallenge] >= scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6]
+          && scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6] >= 0)
       ) {
     if (player.currentChallenge.reincarnation !== 0) {
       resetCheck('reincarnationchallenge');
@@ -942,7 +959,9 @@ function scriptAutoChallengeReinc() {
     // Don't try if particles are too low
     while (scriptVariables.currentReincChallenge < 11) {
       if (player.reincarnationPoints.exponent >= scriptSettings.challengeMinReincParts[scriptVariables.currentReincChallenge - 6]
-          && player.challengecompletions[scriptVariables.currentReincChallenge] < scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6]) {
+          && (player.challengecompletions[scriptVariables.currentReincChallenge] < scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6]
+              || scriptSettings.challengeMaxReincCompletions[scriptVariables.currentReincChallenge - 6] < 0))
+      {
         toggleChallenges(scriptVariables.currentReincChallenge);
         break;
       }
@@ -1065,6 +1084,7 @@ function scriptAutoPartBuildings() {
 // Helper functions for Auto Research
 // Returns whether the research is maxed. SI blessing will need to be considered here.
 function scriptResearchIsMaxed(tech) {
+  if (tech <= 5) return (player.researches[tech] >= researchMaxLevels[tech] + player.challengecompletions[14]);
   return (player.researches[tech] >= researchMaxLevels[tech]);
 }
 
@@ -1099,6 +1119,15 @@ function scriptAutoResearch () {
   player.autoResearchToggle = temp2;
 }
 
+// Resets scriptVariables if the ascension counter goes down
+function scriptResetAfterManualAscension() {
+  if (scriptVariables.lastAscensionCounter > player.ascensionCounter) {
+    sLog(1, "Manual Ascension detected, resetting script variables.");
+    scriptResetVariables();
+  }
+  scriptVariables.lastAscensionCounter = player.ascensionCounter;
+}
+
 
 
 function scriptInitialize() {
@@ -1118,6 +1147,7 @@ function scriptAutoAll () {
   if (!(scriptVariables.displayInitialized)) scriptInitializeDisplay();
   
   if (scriptSettings.autoTurnedOn) {
+    scriptResetAfterManualAscension();
     if (scriptSettings.autoLog) scriptAutoLog();
     if (scriptSettings.autoGameFlow) scriptAutoGameFlow();
     if (scriptSettings.autoTalismans) scriptAutoTalismans();
