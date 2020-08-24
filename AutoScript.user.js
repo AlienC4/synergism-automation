@@ -38,6 +38,15 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.12   24-Aug-20  Log GUI
+- Game version: v1.011 TESTING! Update: August 22, 2020 7:08 PM PDT
+- Game version: Auto-Research enabled up to research 140
+- Added log to GUI Main tab
+- Logging settings moved to their own tab
+- No longer reincarnate independently of reincarnation timer settings if gained particles are significantly higher than stored ones
+- Internal: Added a saved script state that lasts ascross sessions. It's like the settings, but cant be changed via GUI
+- Internal: Added a variable for the script version to the state. For now it's just used for printing a log message when a version change is detected.
+
 1.11.6 21-Aug-20  Log level changes
 - Made some changes to logging levels, set it to 1 to only see ascension time and C/s. Periodic stats logging has moved from level 2 to level 3.
 
@@ -148,16 +157,13 @@ TODO:
 - Print a message on new version
 - Add a changelog button
 - Show an alert when changing a setting that will only apply on reload
-- Add settings for reincarnation times
 - Add config to let auto research skip some techs
 - Add autobuyers for some mythos stuff maybe (autobuy mythos buildings, autobuy mythos upgrades, autobuy mythos autobuyers)
-- Overview of the last few ascensions (maybe check autotrimps graph thingy to see if I can do something like that)
 - Add a help tab that explains some features and interactions
 - Auto-Sacrifice: spam sacrifice for first talisman upgrade fragments, adjust sacrifice timer (configurable, maybe depending on ant speed multi), force challenge pushes to happen at high ant timer (configurable, maybe in terms of percent of sacrifice timer)
 - Make script interval work without restart (use fast interval, but check if script interval is reached before doing stuff)
 - Tesseract upgrade autobuyer
 - Figure out something to improve challenge timer options. The wait after ascension and the wait after script start are weird.
-- Maybe an option to ascend into a specific ascension challenge
 - Settings and dashboard GUI part 2
   * Auto-adjust width
   * Scrollbar if too long
@@ -168,7 +174,7 @@ TODO:
   * Implement spaceafter
 */
 
-
+scriptCurrentVersion = 1;
 
 let scriptSettings = {};
 let scriptDefineSettings = {};
@@ -202,8 +208,13 @@ tempSetting = new scriptSetting("autoPartBuildings", false, "Automatically buy p
 tempSetting = new scriptSetting("autoResearch", false, "Automatically research techs from cheapest to most expensive. For when you don't have w1x10 yet or need faster research.", "Auto Research", "main", "toggles", 80, true);
 
 // Logging Settings
-tempSetting = new scriptSetting("logLevel", 10, "How much to log. 10 prints all messages, 0 logs only script start.", "Log Level", "main", "log", 50);
-tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data to console every X seconds. Logging level needs to be at least 3 for this to work.", "Log Interval", "main", "log", 60);
+tempSetting = new scriptSetting("logLevel", 10, "How much to log. 10 prints all messages, 0 logs only script start.", "Log Level", "logging", "log", 10);
+tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data to console every X seconds. Logging level needs to be at least 3 for this to work.", "AutoLog Interval", "logging", "log", 20);
+tempSetting = new scriptSetting("logUpdateInterval", 1000, "How often the log display is updated (milliseconds)", "Log Display Update Interval", "logging", "log", 30);
+tempSetting = new scriptSetting("logLengthDisplay", 100, "How many log entries to display.", "Log Length (display)", "logging", "log", 40);
+tempSetting = new scriptSetting("logLengthSave", 100, "How many log entries to save. Probably setting this much higher than 100 would be bad!", "Log Length (save)", "logging", "log", 50);
+tempSetting = new scriptSetting("logToGui", true, "Log to GUI. Turning this off does not clear the existing log, set length to 0 to do that.", "Log to GUI", "logging", "log", 60);
+tempSetting = new scriptSetting("logToConsole", false, "Log to browser console.", "Log to browser console", "logging", "log", 70);
 
 // Game flow settings
 tempSetting = new scriptSetting("flowAscendAtC10Completions", 1, "Ascend only if C10 has been completed at least this many times", "C10 for ascend", "flow", "ascend", 10);
@@ -253,6 +264,22 @@ tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x
 tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16", "4x16 wait time", "runes", "runes", 60);
 tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17", "4x17 wait time", "runes", "runes", 70);
 
+// Script State. Same as variables, but saved
+let scriptState = {};
+let scriptDefineState = {};
+let tempState = {};
+// State infrastructure and definitions
+class scriptStateDefinition {
+  constructor(name, defaultValue) {
+    this.name = name;
+    this.defaultValue = defaultValue;
+    scriptDefineState[name] = this;
+  }
+}
+
+tempState = new scriptStateDefinition("version", 0);
+tempState = new scriptStateDefinition("log", []);
+tempState = new scriptStateDefinition("lastLogId", 0);
 
 // Variables, don't change manually
 let scriptVariables = {};
@@ -280,6 +307,10 @@ scriptVariables.settingsTabs = [];
 scriptVariables.researchTarget = null; //A
 scriptVariables.researchOrder = researchBaseCosts.map((val, ind)=>({value: val, index: ind})).sort((a, b)=>(a.value - b.value)).map(x => x.index); // Make a list of techs with costs, sort by cost, map back to a list of techs
 scriptVariables.lastAscensionCounter = player.ascensionCounter; //A
+scriptVariables.logCounter = 0;
+
+// Script constants
+const scriptLogHeight = 215;
 
 // Settings infrastructure
 function scriptSettingsSave() {
@@ -342,6 +373,55 @@ function scriptSettingsResetToDefault() {
   scriptSettingsClean();
   scriptSettingsSave();
 }
+
+
+// Script State infrastructure
+function scriptStateSave() {
+  window.localStorage.setItem('galefuryScriptState', JSON.stringify(scriptState));
+}
+
+// Sets defined state values that are not found in the scriptState object to default values
+function scriptStateFillDefaults() {
+  if (!scriptState) scriptState = {initial: "initial"};
+  Object.keys(scriptDefineState).forEach(function(key,index) {
+    if (!(scriptState.hasOwnProperty(key))) {
+      scriptState[key] = scriptDefineState[key].defaultValue;
+      console.log("Setting " + key + " set to default Value " + scriptDefineState[key].defaultValue);
+    }
+  });
+}
+
+// Removes any settings that are not in the state definition
+function scriptStateClean() {
+  Object.keys(scriptState).forEach(function(key,index) {
+    if (!(scriptDefineState.hasOwnProperty(key))) {
+      delete scriptState[key];
+      console.log("State " + key + " deleted");
+    }
+  });
+}
+
+// Loads script settings from browser local storage
+function scriptStateLoad() {
+  scriptState = JSON.parse(window.localStorage.getItem('galefuryScriptState'));
+  scriptStateFillDefaults();
+  scriptStateClean();
+  scriptLogRebaseIds();
+  scriptStateSave();
+}
+
+// Removes script state from browser local storage
+function scriptStateRemoveStorage() {
+  window.localStorage.removeItem('galefuryScriptState');
+  console.log("Script state removed from local storage");
+}
+
+// Sets a state value and saves the state
+function scriptSetState(key, value) {
+  scriptState[key] = value;
+  scriptStateSave();
+}
+
 
 // Creates a HTML Element from a String
 function scriptCreateElement(htmlString) {
@@ -489,6 +569,136 @@ function scriptAddSettingsToSections() {
   }
 }
 
+// General Helper functions
+// Time formatter
+function scriptCurrentTimeString() {
+  let date = new Date();
+  return String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0") + ":" + String(date.getSeconds()).padStart(2, "0");
+}
+
+// Class for log entries
+// Save state after using constructor!
+class scriptLogEntry {
+  constructor(level, text) {
+    this.level = level;
+    this.text = text;
+    this.date = scriptCurrentTimeString();
+    this.particles = format(player.reincarnationPoints.exponent, 0, false);
+    scriptState.lastLogId++;
+    this.id = scriptState.lastLogId;
+  }
+}
+
+// Rebases log entry IDs to start at 1
+// Save state after using!
+function scriptLogRebaseIds() {
+  for (let i = 0; i < scriptState.log.length; i++) {
+    scriptState.log[i].id = i+1;
+  }
+  scriptState.lastLogId = scriptState.log.length;
+}
+
+// Adds a log entry
+function scriptAddLogEntry(level, text) {
+  if (!(scriptState.log)) scriptState.log = [];
+  
+  if (level <= scriptSettings.logLevel) scriptState.log.push(new scriptLogEntry(level, text));
+  
+  while (scriptSettings.logLengthSave >= 0 && scriptState.log.length > scriptSettings.logLengthSave) scriptState.log.shift();
+  if (scriptState.log[scriptState.log.length - 1].id > Number.MAX_SAFE_INTEGER - 1000) scriptLogRebaseIds();
+  scriptStateSave();
+}
+
+// Makes the HTML element for a log Entry
+function scriptMakeLogEntryElement (entry) {
+  let element = scriptCreateElement('<div class=script-log-entry id = script-log-entry-'+entry.id+'></div>');
+  element.append(scriptCreateElement('<div class=script-log-date>'+entry.date+'</div>'));
+  element.append(scriptCreateElement('<div class=script-log-parts>'+entry.particles+'</div>'));
+  element.append(scriptCreateElement('<div class=script-log-text>'+entry.text+'</div>'));
+  return element;
+}
+
+// Updates the Log display
+function scriptUpdateLog(force = false, rebuild = false) {
+  // Only act every logInterval
+  scriptVariables.logCounter += scriptSettings.scriptInterval;
+  if (!force && scriptVariables.logCounter < scriptSettings.logUpdateInterval) return;
+  scriptVariables.logCounter = scriptVariables.logCounter % scriptSettings.logUpdateInterval;
+  
+  let log = document.getElementById('script-log');
+  if (rebuild) {
+    // Clean out the log
+    let clearLog = log.cloneNode(false);
+    log.parentNode.replaceChild(clearLog, log);
+    log = clearLog;
+    // Re-add all entries
+    for (let i = 0; i < scriptState.log.length; i++) {
+      if (scriptState.log[i].level <= scriptSettings.logLevel) log.append(scriptMakeLogEntryElement(scriptState.log[i]));
+    }
+    
+    // Scroll to bottom after rebuild
+    document.getElementById('script-log-container').scroll(0, document.getElementById('script-log').scrollHeight - scriptLogHeight);
+    
+  } else {
+    let scrolledToBottom = document.getElementById('script-log-container').scrollTop >= document.getElementById('script-log').scrollHeight - scriptLogHeight;
+    // don't clean out the log, only add new entries
+    for (let i = 0; i < scriptState.log.length; i++) {
+      if (scriptState.log[i].id > scriptVariables.logLastAddedId && scriptState.log[i].level <= scriptSettings.logLevel) log.append(scriptMakeLogEntryElement(scriptState.log[i]));
+    }
+    
+    // remove first elements if too long
+    while (scriptSettings.logLengthDisplay >= 0 && log.childNodes.length > scriptSettings.logLengthDisplay) log.removeChild(log.firstChild);
+    
+    // If log was at bottom, stay at bottom
+    if (scrolledToBottom) document.getElementById('script-log-container').scroll(0, document.getElementById('script-log').scrollHeight - scriptLogHeight);
+  }
+
+  scriptVariables.logLastAddedId = scriptState.log[scriptState.log.length - 1].id;
+}
+
+function sLog(level, text, force = false) {
+  if (force || scriptSettings.logToGui) scriptAddLogEntry(level, text);
+  if (force || scriptSettings.logToConsole) {
+    if (level <= scriptSettings.logLevel) {
+      console.log(scriptCurrentTimeString() + " " + format(player.reincarnationPoints.exponent, 0, false) + "   " + text);
+    }
+  }
+}
+
+// Logs stuff periodically
+function scriptLogStuff() {
+  sLog(3, "=== Info Dump at Ascension timer " + Math.floor(player.ascensionCounter) + " ===");
+
+  // Logs Challenge completions
+  sLog(3, "Challenge Info: " +
+  "Trans: " + player.highestchallengecompletions[1]+"/"+player.highestchallengecompletions[2]+"/"+player.highestchallengecompletions[3]+"/"+player.highestchallengecompletions[4]+"/"+
+  player.highestchallengecompletions[5]+"  "+
+  "Reinc: " + player.highestchallengecompletions[6]+"/"+player.highestchallengecompletions[7]+"/"+player.highestchallengecompletions[8]+"/"+player.highestchallengecompletions[9]+"/"+
+  player.highestchallengecompletions[10]);
+  // Logs Rune Levels, Talisman Rarity, Talisman levels
+  sLog(3, "Rune Info:      " +
+  "R: " + player.runelevels[0]+"/"+player.runelevels[1]+"/"+player.runelevels[2]+"/"+player.runelevels[3]+"/"+player.runelevels[4]+"   "+
+  "T: " + player.talismanRarity[1] + "x" + player.talismanLevels[1] + "/" +
+  player.talismanRarity[2] + "x" + player.talismanLevels[2] + "/" +
+  player.talismanRarity[3] + "x" + player.talismanLevels[3] + "/" +
+  player.talismanRarity[4] + "x" + player.talismanLevels[4] + "/" +
+  player.talismanRarity[5] + "x" + player.talismanLevels[5] + "/" +
+  player.talismanRarity[6] + "x" + player.talismanLevels[6] + "/" +
+  player.talismanRarity[7] + "x" + player.talismanLevels[7]
+  );
+
+  // Logs some Cube stats
+  let c = player.cubesThisAscension.challenges, r = player.cubesThisAscension.reincarnation, a = player.cubesThisAscension.ascension;
+  sLog(3, "Cube Info:      " + (format((c + r + a) / player.ascensionCounter, 4, true)) + "C/s   current: " + Math.floor(player.wowCubes) + "   blessings: " + Object.values(player.cubeBlessings).reduce((s, t) => s + t));
+}
+
+function scriptAutoLog() {
+  if (player.ascensionCounter > scriptVariables.lastLogCounter + scriptSettings.logInterval) {
+    scriptVariables.lastLogCounter = player.ascensionCounter;
+    scriptLogStuff();
+  }
+}
+
 function scriptInitializeDisplay() {
   let settings_tab = document.getElementById('settings');
   let body;
@@ -535,6 +745,24 @@ function scriptInitializeDisplay() {
       '.scriptsettings-numberfield {'+
         'background-color: #202020; color: white; max-width: 100px'+
       '}'+
+      '.script-log-container {'+
+        'display:block; overflow: hidden scroll;'+
+      '}'+
+      '.script-log {'+
+        'display:flex; flex-flow: column nowrap; justify-content: flex-end; padding: 1px; background-color: #202020; color: white;'+
+      '}'+
+      '.script-log-entry {'+
+        'display:flex; flex-flow: row nowrap; justify-content: flex-start; width: 100%;'+
+      '}'+
+      '.script-log-date {'+
+        'width: 65px; white-space: nowrap;'+
+      '}'+
+      '.script-log-parts {'+
+        'width: 60px; white-space: nowrap;'+
+      '}'+
+      '.script-log-text {'+
+        'white-space: nowrap;'+
+      '}'+
       '.scriptsettings-container {'+
         'display:flex; justify-content: space-between;'+
     	'}';
@@ -546,9 +774,11 @@ function scriptInitializeDisplay() {
     
     // Insert script settings sections
     scriptCreateSettingsSection("script-settings-main", "Main", "script-settings", "script-settings-header");
-    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-info', '40%', 'Info'));
-    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-log', '40%', 'Log'));
-    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-toggles', '20%', 'Toggles'));
+    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-info', '20%', 'Info'));
+    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-log', '63%', 'Log'));
+    document.getElementById('script-settings-main-log').append(scriptCreateElement('<div id = "script-log-container" class=script-log-container style = "width: 100%; height: '+scriptLogHeight+'px;"></div>'));
+    document.getElementById('script-log-container').append(scriptCreateElement('<div id = "script-log" class=script-log style = "width: 100%"></div>'));
+    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-toggles', '17%', 'Toggles'));
     scriptCreateSettingsSection("script-settings-flow", "Flow", "script-settings", "script-settings-header");
     document.getElementById('script-settings-flow').append(scriptCreateElement('<div id = "script-settings-flow-co11" class=scriptsettings-column style = "width: 22%"></div>'));
     document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-ascend', '100%', 'Ascension'));
@@ -561,55 +791,17 @@ function scriptInitializeDisplay() {
     scriptCreateSettingsSection("script-settings-challenges", "Challenges", "script-settings", "script-settings-header");
     document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-trans', '40%', 'Transcension Challenges'));
     document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-reinc', '40%', 'Reincarnation Challenges'));
+    scriptCreateSettingsSection("script-settings-logging", "Logging", "script-settings", "script-settings-header");
+    document.getElementById('script-settings-logging').append(scriptCreateSettingsColumn('script-settings-logging-log', '25%', 'Logging'));
     
     scriptAddSettingsToSections();
     scriptChangeSettingsTab("script-settings-main");
     
+    scriptUpdateLog(true, true); // Fill log window with restored entries
+    
     scriptVariables.displayInitialized = true;
   } else {
     console.error("Could not create script GUI, body not found.")
-  }
-}
-
-// General Helper functions
-function sLog(level, text) {
-  if (level <= scriptSettings.logLevel) {
-    let d = new Date();
-    console.log(d.toLocaleTimeString() + " " + Math.floor(player.reincarnationPoints.exponent) + "   " + text);
-  }
-}
-
-// Logs stuff periodically
-function scriptLogStuff() {
-  sLog(3, "=== Info Dump at Ascension timer " + Math.floor(player.ascensionCounter) + " ===");
-
-  // Logs Challenge completions
-  sLog(3, "Challenge Info: " +
-  "Trans: " + player.highestchallengecompletions[1]+"/"+player.highestchallengecompletions[2]+"/"+player.highestchallengecompletions[3]+"/"+player.highestchallengecompletions[4]+"/"+
-  player.highestchallengecompletions[5]+"  "+
-  "Reinc: " + player.highestchallengecompletions[6]+"/"+player.highestchallengecompletions[7]+"/"+player.highestchallengecompletions[8]+"/"+player.highestchallengecompletions[9]+"/"+
-  player.highestchallengecompletions[10]);
-  // Logs Rune Levels, Talisman Rarity, Talisman levels
-  sLog(3, "Rune Info:      " +
-  "R: " + player.runelevels[0]+"/"+player.runelevels[1]+"/"+player.runelevels[2]+"/"+player.runelevels[3]+"/"+player.runelevels[4]+"   "+
-  "T: " + player.talismanRarity[1] + "x" + player.talismanLevels[1] + "/" +
-  player.talismanRarity[2] + "x" + player.talismanLevels[2] + "/" +
-  player.talismanRarity[3] + "x" + player.talismanLevels[3] + "/" +
-  player.talismanRarity[4] + "x" + player.talismanLevels[4] + "/" +
-  player.talismanRarity[5] + "x" + player.talismanLevels[5] + "/" +
-  player.talismanRarity[6] + "x" + player.talismanLevels[6] + "/" +
-  player.talismanRarity[7] + "x" + player.talismanLevels[7]
-  );
-
-  // Logs some Cube stats
-  let c = player.cubesThisAscension.challenges, r = player.cubesThisAscension.reincarnation, a = player.cubesThisAscension.ascension;
-  sLog(3, "Cube Info:      " + (format((c + r + a) / player.ascensionCounter, 4, true)) + "C/s   current: " + Math.floor(player.wowCubes) + "   blessings: " + Object.values(player.cubeBlessings).reduce((s, t) => s + t));
-}
-
-function scriptAutoLog() {
-  if (player.ascensionCounter > scriptVariables.lastLogCounter + scriptSettings.logInterval) {
-    scriptVariables.lastLogCounter = player.ascensionCounter;
-    scriptLogStuff();
   }
 }
 
@@ -819,10 +1011,14 @@ function scriptAutoGameFlow () {
   }
 
   // Handle Reincarnation
-  if (scriptNoCurrentAction() && (player.reincarnationcounter > scriptVariables.targetReincTime || ((player.reincarnationPoints.exponent + 100)*1.05 < reincarnationPointGain.exponent && player.reincarnationcounter > 60))) {
+  if (scriptNoCurrentAction() && player.reincarnationcounter > scriptVariables.targetReincTime) {
     let tempTimer = player.reincarnationcounter;
     resetCheck('reincarnate');
-    sLog(8, "Reincarnated (" + tempTimer + ")");
+    if (player.reincarnationcounter < tempTimer) {
+      sLog(8, "Reincarnated (" + tempTimer + ")");
+    } else {
+      sLog(8, "Failed to reincarnate");
+    }
   }
 }
 
@@ -833,7 +1029,7 @@ function scriptAutoTalismans () {
   // Only act every talismanInterval
   scriptVariables.talismanCounter += scriptSettings.scriptInterval;
   if (scriptVariables.talismanCounter < scriptSettings.talismanInterval) return;
-  scriptVariables.talismanCounter = 0;
+  scriptVariables.talismanCounter = scriptVariables.talismanCounter % scriptSettings.talismanInterval;
 
   let unlockAchievements = [null, 119, 126, 133, 140, 147, null, null];
 
@@ -1108,7 +1304,7 @@ function scriptAutoResearch () {
   let i = 0; // Counter to prevent infinite loops
   let temp = maxbuyresearch;
   let temp2 = player.autoResearchToggle;
-  while (scriptVariables.researchTarget > 0 && scriptVariables.researchTarget <= 125 &&  scriptResearchIsAffordable(scriptVariables.researchTarget) && i < 200) {
+  while (scriptVariables.researchTarget > 0 && scriptVariables.researchTarget <= 140 &&  scriptResearchIsAffordable(scriptVariables.researchTarget) && i < 200) {
     // Buy max
     maxbuyresearch = true;
     player.autoResearchToggle = false;
@@ -1132,11 +1328,24 @@ function scriptResetAfterManualAscension() {
 }
 
 
+// Does any stuff that needs to be done due to a script version change
+function scriptHandleVersion() {
+  if (scriptState.version === 0) {
+    sLog(0, "Welcome to Galefury's Synergism Ascension Automator!");
+    scriptSetState('version', scriptCurrentVersion);
+  }
+  if (scriptState.version < scriptCurrentVersion) {
+    sLog(0, "You are using a new script version!");
+  }
+  scriptSetState('version', scriptCurrentVersion);
+}
 
 function scriptInitialize() {
   sLog(0, "Starting Script");
   resetCheck('challenge');
   resetCheck('reincarnationchallenge');
+  
+  scriptHandleVersion();
   
   scriptVariables.scriptInitialized = true;
 }
@@ -1161,9 +1370,11 @@ function scriptAutoAll () {
     if (scriptSettings.autoOpenCubes) scriptAutoOpenCubes();
     if (scriptSettings.autoPartBuildings) scriptAutoPartBuildings();
     if (scriptSettings.autoResearch) scriptAutoResearch();
+    scriptUpdateLog(false, false);
   }
 }
 
 scriptSettingsLoad();
+scriptStateLoad();
 
 window.setInterval(scriptAutoAll, scriptSettings.scriptInterval);
