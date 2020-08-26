@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.12.0
+// @version      1.13.0
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,6 +38,12 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.13   26-Aug-20  Settings import/export
+- Game version: v2.0.0 TESTING! Update: August 25, 2020 11:29 PM PDT
+- Game version: autoresearch enabled up to research 155
+- Added settings import and export, as well as a button to reset them to the defaults. Export copies a settings string to the clipboard. A partial import string will only override the given settings.
+- The Script Interval setting can now be changed without a reload. The script now internally always works on a 50ms timer, but only triggers when the configured interval is reached.
+
 1.12   24-Aug-20  Log GUI
 - Game version: v1.011 TESTING! Update: August 22, 2020 7:08 PM PDT
 - Game version: Auto-Research enabled up to research 140
@@ -150,31 +156,27 @@ Initial version of the script. Game version: v1.011 TESTING! Update: July 22, 20
 
 /*
 TODO:
+- Add a setting to turn off automatically running challenges now that there is ingame automation for it
 - Log current speedup and maybe other game stats
 - Save some scriptVariables
-  * Add script version as a saved variable. Reset changed settings if needed and print a log message about changed or new settings and where they are.
   * Save last challenge attempt particles
-- Print a message on new version
 - Add a changelog button
-- Show an alert when changing a setting that will only apply on reload
 - Add config to let auto research skip some techs
 - Add autobuyers for some mythos stuff maybe (autobuy mythos buildings, autobuy mythos upgrades, autobuy mythos autobuyers)
 - Add a help tab that explains some features and interactions
 - Auto-Sacrifice: spam sacrifice for first talisman upgrade fragments, adjust sacrifice timer (configurable, maybe depending on ant speed multi), force challenge pushes to happen at high ant timer (configurable, maybe in terms of percent of sacrifice timer)
-- Make script interval work without restart (use fast interval, but check if script interval is reached before doing stuff)
 - Tesseract upgrade autobuyer
 - Figure out something to improve challenge timer options. The wait after ascension and the wait after script start are weird.
 - Settings and dashboard GUI part 2
-  * Auto-adjust width
   * Scrollbar if too long
-  * Buttons to reset settings to default and maybe other stuff (start challenges manually, export/import settings)
+  * Maybe a button to start challenges manually
   * Build HUD for script stats
-  * Move log to a textfield
   * Option to hide GUI
   * Implement spaceafter
 */
 
-scriptCurrentVersion = 1;
+const scriptCurrentVersion = 2;
+const scriptInternalInverval = 50;
 
 let scriptSettings = {};
 let scriptDefineSettings = {};
@@ -195,7 +197,7 @@ class scriptSetting {
 
 // Settings Definitions and default values
 tempSetting = new scriptSetting("autoTurnedOn", true, "Master Switch for the script.", "Master Switch", "main", "toggles", 1, true);
-tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds. Only refreshed on reload.", "Script Interval", "main", "toggles", 150);
+tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds. Internally the interval is always 50ms, but the automation only triggers when the interval configured here is reached.", "Script Interval", "main", "toggles", 150);
 
 // Toggles for Script features
 tempSetting = new scriptSetting("autoLog", true, "Does some periodic logging, as long as logLevel is at least 3", "Auto Log", "main", "toggles", 10);
@@ -308,6 +310,7 @@ scriptVariables.researchTarget = null; //A
 scriptVariables.researchOrder = researchBaseCosts.map((val, ind)=>({value: val, index: ind})).sort((a, b)=>(a.value - b.value)).map(x => x.index); // Make a list of techs with costs, sort by cost, map back to a list of techs
 scriptVariables.lastAscensionCounter = player.ascensionCounter; //A
 scriptVariables.logCounter = 0;
+scriptVariables.scriptCounter = 0;
 
 // Script constants
 const scriptLogHeight = 215;
@@ -343,21 +346,48 @@ function scriptSettingsClean() {
   });
 }
 
+// Updates the GUI from the settings
+function scriptUpdateGuiFromSettings() {
+  if (!scriptVariables.displayInitialized) return;
+  
+  Object.keys(scriptSettings).forEach(function(key,index) {
+    if (typeof scriptSettings[key] === 'object') {
+      for (let i = 0; i < scriptSettings[key].length; i++) {
+        document.getElementById('scriptsetting-'+key+'-'+i)[(typeof scriptSettings[key][i] === "number" ? "value" : "checked")] = scriptSettings[key][i];
+      }
+    } else {
+      document.getElementById('scriptsetting-'+key)[(typeof scriptSettings[key] === "number" ? "value" : "checked")] = scriptSettings[key];
+    }
+  });
+}
+
 // Imports settings from a JSON String, sets any defined but not imported settings to default value
-function scriptSettingsImport (settings) {
-  if (settings != null) {
-    scriptSettings = JSON.parse(settings);
+function scriptSettingsImport(settings, setAll = true) {
+  if (setAll) {
+    if (settings != null) {
+      scriptSettings = JSON.parse(settings);
+    } else {
+      scriptSettings = {};
+    }
   } else {
-    scriptSettings = {};
+    // Only set the options in the import string
+    if (settings != null) {
+      let tempSettings = JSON.parse(settings);
+      Object.keys(tempSettings).forEach(function(key,index) {
+        scriptSettings[key] = tempSettings[key];
+      });
+    }
   }
+
   scriptSettingsFillDefaults();
   scriptSettingsClean();
   scriptSettingsSave();
+  scriptUpdateGuiFromSettings();
 }
 
 // Loads script settings from browser local storage
 function scriptSettingsLoad() {
-  scriptSettingsImport(window.localStorage.getItem('galefuryScriptSettings'));
+  scriptSettingsImport(window.localStorage.getItem('galefuryScriptSettings'), true);
 }
 
 // Removes script settings from browser local storage
@@ -372,10 +402,35 @@ function scriptSettingsResetToDefault() {
   scriptSettingsFillDefaults();
   scriptSettingsClean();
   scriptSettingsSave();
+  scriptUpdateGuiFromSettings();
 }
+if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptSettingsResetToDefault = scriptSettingsResetToDefault;}
+
+// Handler for settings export
+function scriptBtnHandlerExport() {
+  let textfield = document.getElementById('script-import');
+  textfield.value = JSON.stringify(scriptSettings);
+
+  textfield.select();
+  textfield.setSelectionRange(0, 99999);
+  document.execCommand("copy");
+}
+if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptBtnHandlerExport = scriptBtnHandlerExport;}
+
+// Handler for settings import
+function scriptBtnHandlerImport() {
+  try {
+    scriptSettingsImport(document.getElementById('script-import').value, false);
+    document.getElementById('script-import').value = "Success!";
+  } catch (err) {
+    document.getElementById('script-import').value = "Failure!";
+  }
+}
+if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptBtnHandlerImport = scriptBtnHandlerImport;}
 
 
 // Script State infrastructure
+// Saves the script state
 function scriptStateSave() {
   window.localStorage.setItem('galefuryScriptState', JSON.stringify(scriptState));
 }
@@ -391,7 +446,7 @@ function scriptStateFillDefaults() {
   });
 }
 
-// Removes any settings that are not in the state definition
+// Removes any state values that are not in the state definition
 function scriptStateClean() {
   Object.keys(scriptState).forEach(function(key,index) {
     if (!(scriptDefineState.hasOwnProperty(key))) {
@@ -401,7 +456,7 @@ function scriptStateClean() {
   });
 }
 
-// Loads script settings from browser local storage
+// Loads script state from browser local storage
 function scriptStateLoad() {
   scriptState = JSON.parse(window.localStorage.getItem('galefuryScriptState'));
   scriptStateFillDefaults();
@@ -526,8 +581,8 @@ if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptChangeSettings
 // Creates an empty settings section with header button
 function scriptCreateSettingsSection(id, name, container, header) {
   // Create header button
-  let btn = scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" onclick = "scriptChangeSettingsTab(\''+id+'\')" value = "'+name+'">');
-  btn.addEventListener("click", scriptChangeSettingsTab(id));
+  let btn = scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" value = "'+name+'">');
+  btn.addEventListener("click", function() {scriptChangeSettingsTab(id)});
   document.getElementById(header).append(btn);
   
   // Create div
@@ -640,7 +695,7 @@ function scriptUpdateLog(force = false, rebuild = false) {
     document.getElementById('script-log-container').scroll(0, document.getElementById('script-log').scrollHeight - scriptLogHeight);
     
   } else {
-    let scrolledToBottom = document.getElementById('script-log-container').scrollTop >= document.getElementById('script-log').scrollHeight - scriptLogHeight;
+    let scrolledToBottom = document.getElementById('script-log-container').scrollTop >= document.getElementById('script-log').scrollHeight - scriptLogHeight - 20; // some Leeway
     // don't clean out the log, only add new entries
     for (let i = 0; i < scriptState.log.length; i++) {
       if (scriptState.log[i].id > scriptVariables.logLastAddedId && scriptState.log[i].level <= scriptSettings.logLevel) log.append(scriptMakeLogEntryElement(scriptState.log[i]));
@@ -718,6 +773,9 @@ function scriptInitializeDisplay() {
       '.scriptsettings-header-button {'+
         'color: white; background-color: black; border: 1px solid purple; padding: 2px'+
       '}'+
+      '.scriptsettings-menu-button {'+
+        'padding: 2px'+
+      '}'+
       '.script-section {'+
         'display:none; flex-flow: row nowrap; justify-content: space-between; width = 100%;'+
       '}'+
@@ -744,6 +802,9 @@ function scriptInitializeDisplay() {
       '}'+
       '.scriptsettings-numberfield {'+
         'background-color: #202020; color: white; max-width: 100px'+
+      '}'+
+      '.scriptsettings-rowcontainer {'+
+        'width: 100%; display: flex; justify-content: space-between;'+
       '}'+
       '.script-log-container {'+
         'display:block; overflow: hidden scroll;'+
@@ -772,7 +833,7 @@ function scriptInitializeDisplay() {
     // Insert script settings header
     document.getElementById('script-settings').append(scriptCreateElement('<div id="script-settings-header" class="script-header"><p class = "script-heading script-para" style = "margin-right: 3px; padding-left: 2px; padding-right: 2px">Script Settings</p></div>'));
     
-    // Insert script settings sections
+    // GUI Layout
     scriptCreateSettingsSection("script-settings-main", "Main", "script-settings", "script-settings-header");
     document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-info', '20%', 'Info'));
     document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-log', '63%', 'Log'));
@@ -791,8 +852,19 @@ function scriptInitializeDisplay() {
     scriptCreateSettingsSection("script-settings-challenges", "Challenges", "script-settings", "script-settings-header");
     document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-trans', '40%', 'Transcension Challenges'));
     document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-reinc', '40%', 'Reincarnation Challenges'));
-    scriptCreateSettingsSection("script-settings-logging", "Logging", "script-settings", "script-settings-header");
+    scriptCreateSettingsSection("script-settings-logging", "Logging & Import", "script-settings", "script-settings-header");
     document.getElementById('script-settings-logging').append(scriptCreateSettingsColumn('script-settings-logging-log', '25%', 'Logging'));
+    document.getElementById('script-settings-logging').append(scriptCreateSettingsColumn('script-settings-logging-import', '30%', 'Settings Import & Export'));
+    document.getElementById('script-settings-logging-import').append(scriptCreateElement('<input id = "script-import" type="text" style = "width: 100%;">'));
+    document.getElementById('script-settings-logging-import').append(scriptCreateElement('<div id = "script-settings-logging-import-buttons" class=scriptsettings-rowcontainer></div>'));
+    document.getElementById('script-settings-logging-import-buttons').append(scriptCreateElement('<input type="button" id = "script-button-export" class = "scriptsettings-menu-button" value = "Export Script Settings">'));
+    document.getElementById('script-settings-logging-import-buttons').append(scriptCreateElement('<input type="button" id = "script-button-import" class = "scriptsettings-menu-button" value = "Import Script Settings">'));
+    document.getElementById('script-settings-logging-import-buttons').append(scriptCreateElement('<input type="button" id = "script-button-defaults" class = "scriptsettings-menu-button" value = "Reset Script Settings">'));
+    
+    // Button handlers
+    document.getElementById('script-button-export').addEventListener("click", scriptBtnHandlerExport);
+    document.getElementById('script-button-import').addEventListener("click", scriptBtnHandlerImport);
+    document.getElementById('script-button-defaults').addEventListener("click", scriptSettingsResetToDefault);
     
     scriptAddSettingsToSections();
     scriptChangeSettingsTab("script-settings-main");
@@ -1015,7 +1087,7 @@ function scriptAutoGameFlow () {
     let tempTimer = player.reincarnationcounter;
     resetCheck('reincarnate');
     if (player.reincarnationcounter < tempTimer) {
-      sLog(8, "Reincarnated (" + tempTimer + ")");
+      sLog(8, "Reincarnated (" + format(tempTimer, 2, true) + ")");
     } else {
       sLog(8, "Failed to reincarnate");
     }
@@ -1304,7 +1376,7 @@ function scriptAutoResearch () {
   let i = 0; // Counter to prevent infinite loops
   let temp = maxbuyresearch;
   let temp2 = player.autoResearchToggle;
-  while (scriptVariables.researchTarget > 0 && scriptVariables.researchTarget <= 140 &&  scriptResearchIsAffordable(scriptVariables.researchTarget) && i < 200) {
+  while (scriptVariables.researchTarget > 0 && scriptVariables.researchTarget <= 155 &&  scriptResearchIsAffordable(scriptVariables.researchTarget) && i < 200) {
     // Buy max
     maxbuyresearch = true;
     player.autoResearchToggle = false;
@@ -1355,6 +1427,11 @@ function scriptAutoAll () {
   // only start once the game is ready
   if (timeWarp) return;
 
+  // Only act every talismanInterval
+  scriptVariables.scriptCounter += scriptInternalInverval;
+  if (scriptVariables.scriptCounter < scriptSettings.scriptInterval) return;
+  scriptVariables.scriptCounter = scriptVariables.scriptCounter % scriptSettings.scriptInterval;
+
   if (!(scriptVariables.scriptInitialized)) scriptInitialize();
   if (!(scriptVariables.displayInitialized)) scriptInitializeDisplay();
   
@@ -1377,4 +1454,4 @@ function scriptAutoAll () {
 scriptSettingsLoad();
 scriptStateLoad();
 
-window.setInterval(scriptAutoAll, scriptSettings.scriptInterval);
+window.setInterval(scriptAutoAll, scriptInternalInverval);
