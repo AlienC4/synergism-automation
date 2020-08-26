@@ -43,6 +43,7 @@ Changelog
 - Game version: autoresearch enabled up to research 155
 - Added settings import and export, as well as a button to reset them to the defaults. Export copies a settings string to the clipboard. A partial import string will only override the given settings.
 - The Script Interval setting can now be changed without a reload. The script now internally always works on a 50ms timer, but only triggers when the configured interval is reached.
+- Log Autoscroll is now a bit more zealous
 
 1.12   24-Aug-20  Log GUI
 - Game version: v1.011 TESTING! Update: August 22, 2020 7:08 PM PDT
