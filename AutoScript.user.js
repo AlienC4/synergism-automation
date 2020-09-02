@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.13.0
+// @version      1.13.1
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,6 +38,12 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.13.1 02-Sep-20  Minor improvements
+- Game version: v2.0.0 TESTING! Update: September 1, 2020 11:17 PM PDT
+- Game version: autoresearch enabled up to research 200
+- Improved handling of Script Interval option. It can now only be set to multiples of 50 (was already only working in intervals of 50 before but could be set to any value in some browsers).
+- "Master Switch" Toggle renamed to "Enable Script". No change in functionality.
+
 1.13   26-Aug-20  Settings import/export
 - Game version: v2.0.0 TESTING! Update: August 25, 2020 11:29 PM PDT
 - Game version: autoresearch enabled up to research 155
@@ -168,6 +174,7 @@ TODO:
 - Auto-Sacrifice: spam sacrifice for first talisman upgrade fragments, adjust sacrifice timer (configurable, maybe depending on ant speed multi), force challenge pushes to happen at high ant timer (configurable, maybe in terms of percent of sacrifice timer)
 - Tesseract upgrade autobuyer
 - Figure out something to improve challenge timer options. The wait after ascension and the wait after script start are weird.
+- Make challenge timer options actually time between end and start, not time between start and start
 - Settings and dashboard GUI part 2
   * Scrollbar if too long
   * Maybe a button to start challenges manually
@@ -176,7 +183,7 @@ TODO:
   * Implement spaceafter
 */
 
-const scriptCurrentVersion = 2;
+const scriptCurrentVersion = 3;
 const scriptInternalInverval = 50;
 
 let scriptSettings = {};
@@ -197,8 +204,8 @@ class scriptSetting {
 }
 
 // Settings Definitions and default values
-tempSetting = new scriptSetting("autoTurnedOn", true, "Master Switch for the script.", "Master Switch", "main", "toggles", 1, true);
-tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds. Internally the interval is always 50ms, but the automation only triggers when the interval configured here is reached.", "Script Interval", "main", "toggles", 150);
+tempSetting = new scriptSetting("autoTurnedOn", true, "Master Switch for the script.", "Enable Script", "main", "toggles", 1, true);
+tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds. Internally the interval is always 50ms, but the automation only triggers when the interval configured here is reached. So only multiples of 50 work here.", "Script Interval", "main", "toggles", 150);
 
 // Toggles for Script features
 tempSetting = new scriptSetting("autoLog", true, "Does some periodic logging, as long as logLevel is at least 3", "Auto Log", "main", "toggles", 10);
@@ -266,6 +273,11 @@ tempSetting = new scriptSetting("runeFastSpendCheat", false, "Enable spending an
 tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x3 is not maxed and Automatic Obt per real real second is at least the cost of a 5x3 level divided by this setting. Set to 0 to turn off.", "5x3 wait time", "runes", "runes", 50);
 tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16", "4x16 wait time", "runes", "runes", 60);
 tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17", "4x17 wait time", "runes", "runes", 70);
+
+// Blessings and Spirits settings
+
+
+
 
 // Script State. Same as variables, but saved
 let scriptState = {};
@@ -350,7 +362,7 @@ function scriptSettingsClean() {
 // Updates the GUI from the settings
 function scriptUpdateGuiFromSettings() {
   if (!scriptVariables.displayInitialized) return;
-  
+
   Object.keys(scriptSettings).forEach(function(key,index) {
     if (typeof scriptSettings[key] === 'object') {
       for (let i = 0; i < scriptSettings[key].length; i++) {
@@ -360,6 +372,15 @@ function scriptUpdateGuiFromSettings() {
       document.getElementById('scriptsetting-'+key)[(typeof scriptSettings[key] === "number" ? "value" : "checked")] = scriptSettings[key];
     }
   });
+}
+
+// Does some settings validation (and correction if needed)
+function scriptSettingsValidate() {
+  let updateNeeded = false;
+  if (scriptSettings.scriptInterval < scriptInternalInverval) {scriptSettings.scriptInterval = scriptInternalInverval; updateNeeded = true;}
+  if (scriptSettings.scriptInterval%scriptInternalInverval !== 0) {scriptSettings.scriptInterval -= scriptSettings.scriptInterval%scriptInternalInverval; updateNeeded = true;}
+
+  if (updateNeeded) scriptUpdateGuiFromSettings();
 }
 
 // Imports settings from a JSON String, sets any defined but not imported settings to default value
@@ -478,7 +499,23 @@ function scriptSetState(key, value) {
   scriptStateSave();
 }
 
+// ===== Info Functions =====
+// Function adapted from AlienC4's
+// Returns the average Cps and Tps over the last n ascensions
+function scriptAverageCpsTps(n) {
+  let sec = 0;
+  let cubes = 0;
+  let tess = 0;
+  for (let i = 0; i < n && i < player.history.ascend.length; i++) {
+      let elem = player.history.ascend[player.history.ascend.length - 1 - i];
+      sec += elem.seconds;
+      cubes += elem.wowCubes;
+      tess += elem.wowTesseracts;
+  }
+  return {cps: sec > 0 ? cubes/sec : 0, tps: sec > 0 ? tess/sec : 0, avgTime: sec / Math.min(n, player.history.ascend.length)}
+}
 
+// =====GUI functions =====
 // Creates a HTML Element from a String
 function scriptCreateElement(htmlString) {
   var div = document.createElement('div');
@@ -585,10 +622,10 @@ function scriptCreateSettingsSection(id, name, container, header) {
   let btn = scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" value = "'+name+'">');
   btn.addEventListener("click", function() {scriptChangeSettingsTab(id)});
   document.getElementById(header).append(btn);
-  
+
   // Create div
   document.getElementById(container).append(scriptCreateElement('<div id = "'+id+'" class = "script-section"></div>'));
-  
+
   // Append to tabs list
   scriptVariables.settingsTabs.push(id);
 }
@@ -601,14 +638,14 @@ function scriptAddOneSettingToSections(setting) {
     datatype = typeof scriptDefineSettings[setting].defaultValue[0];
     arrayCount = scriptDefineSettings[setting].defaultValue.length;
   }
-  
+
   let element;
   switch (datatype) {
     case "number": element = scriptCreateNumberField("scriptsetting-"+setting, setting, scriptDefineSettings[setting].label, scriptDefineSettings[setting].description, arrayCount); break;
     case "boolean": element = scriptCreateCheckbox("scriptsetting-"+setting, setting, scriptDefineSettings[setting].label, scriptDefineSettings[setting].description, arrayCount); break;
     default: console.error("Data Type "+datatype+" of setting "+setting+" is not compatible!"); return;
   }
-  
+
   let col = document.getElementById("script-settings-"+scriptDefineSettings[setting].section+"-"+scriptDefineSettings[setting].column);
   if (col) {
     col.append(element);
@@ -657,9 +694,9 @@ function scriptLogRebaseIds() {
 // Adds a log entry
 function scriptAddLogEntry(level, text) {
   if (!(scriptState.log)) scriptState.log = [];
-  
+
   if (level <= scriptSettings.logLevel) scriptState.log.push(new scriptLogEntry(level, text));
-  
+
   while (scriptSettings.logLengthSave >= 0 && scriptState.log.length > scriptSettings.logLengthSave) scriptState.log.shift();
   if (scriptState.log[scriptState.log.length - 1].id > Number.MAX_SAFE_INTEGER - 1000) scriptLogRebaseIds();
   scriptStateSave();
@@ -680,7 +717,7 @@ function scriptUpdateLog(force = false, rebuild = false) {
   scriptVariables.logCounter += scriptSettings.scriptInterval;
   if (!force && scriptVariables.logCounter < scriptSettings.logUpdateInterval) return;
   scriptVariables.logCounter = scriptVariables.logCounter % scriptSettings.logUpdateInterval;
-  
+
   let log = document.getElementById('script-log');
   if (rebuild) {
     // Clean out the log
@@ -691,20 +728,20 @@ function scriptUpdateLog(force = false, rebuild = false) {
     for (let i = 0; i < scriptState.log.length; i++) {
       if (scriptState.log[i].level <= scriptSettings.logLevel) log.append(scriptMakeLogEntryElement(scriptState.log[i]));
     }
-    
+
     // Scroll to bottom after rebuild
     document.getElementById('script-log-container').scroll(0, document.getElementById('script-log').scrollHeight - scriptLogHeight);
-    
+
   } else {
     let scrolledToBottom = document.getElementById('script-log-container').scrollTop >= document.getElementById('script-log').scrollHeight - scriptLogHeight - 20; // some Leeway
     // don't clean out the log, only add new entries
     for (let i = 0; i < scriptState.log.length; i++) {
       if (scriptState.log[i].id > scriptVariables.logLastAddedId && scriptState.log[i].level <= scriptSettings.logLevel) log.append(scriptMakeLogEntryElement(scriptState.log[i]));
     }
-    
+
     // remove first elements if too long
     while (scriptSettings.logLengthDisplay >= 0 && log.childNodes.length > scriptSettings.logLengthDisplay) log.removeChild(log.firstChild);
-    
+
     // If log was at bottom, stay at bottom
     if (scrolledToBottom) document.getElementById('script-log-container').scroll(0, document.getElementById('script-log').scrollHeight - scriptLogHeight);
   }
@@ -761,7 +798,7 @@ function scriptInitializeDisplay() {
   if (settings_tab) body = settings_tab.parentElement.parentElement;
   if (body) {
     body.append(scriptCreateElement('<div id="script-settings" style="color: white; position: absolute; top: 720px; margin-left: 20px; min-width: 1250px; max-width: 1400px;"></div>'));
-    
+
     // Insert Stylesheet
     let style = document.createElement('style');
     style.innerHTML =
@@ -830,10 +867,10 @@ function scriptInitializeDisplay() {
     	'}';
     let ref = document.querySelector('script');
     ref.parentNode.insertBefore(style, ref);
-    
+
     // Insert script settings header
     document.getElementById('script-settings').append(scriptCreateElement('<div id="script-settings-header" class="script-header"><p class = "script-heading script-para" style = "margin-right: 3px; padding-left: 2px; padding-right: 2px">Script Settings</p></div>'));
-    
+
     // GUI Layout
     scriptCreateSettingsSection("script-settings-main", "Main", "script-settings", "script-settings-header");
     document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-info', '20%', 'Info'));
@@ -861,7 +898,7 @@ function scriptInitializeDisplay() {
     document.getElementById('script-settings-logging-import-buttons').append(scriptCreateElement('<input type="button" id = "script-button-export" class = "scriptsettings-menu-button" value = "Export Script Settings">'));
     document.getElementById('script-settings-logging-import-buttons').append(scriptCreateElement('<input type="button" id = "script-button-import" class = "scriptsettings-menu-button" value = "Import Script Settings">'));
     document.getElementById('script-settings-logging-import-buttons').append(scriptCreateElement('<input type="button" id = "script-button-defaults" class = "scriptsettings-menu-button" value = "Reset Script Settings">'));
-    
+
     // Button handlers
     document.getElementById('script-button-export').addEventListener("click", scriptBtnHandlerExport);
     document.getElementById('script-button-import').addEventListener("click", scriptBtnHandlerImport);
@@ -870,8 +907,12 @@ function scriptInitializeDisplay() {
     scriptAddSettingsToSections();
     scriptChangeSettingsTab("script-settings-main");
     
+    // Specific fields handling
+    document.getElementById('scriptsetting-scriptInterval').min = scriptInternalInverval;
+    document.getElementById('scriptsetting-scriptInterval').step = scriptInternalInverval;
+
     scriptUpdateLog(true, true); // Fill log window with restored entries
-    
+
     scriptVariables.displayInitialized = true;
   } else {
     console.error("Could not create script GUI, body not found.")
@@ -963,7 +1004,7 @@ function scriptAutoGameFlow () {
     // Exit any running challenges
     if (player.currentChallenge.transcension != 0) resetCheck('challenge');
     if (player.currentChallenge.reincarnation != 0) resetCheck('reincarnationchallenge');
-    
+
     // Respec to 2 4 5
     if (player.runeshards > 400000) {
       mirrorTalismanStats = [null, -1, 1, -1, 1, 1];
@@ -1153,7 +1194,7 @@ function scriptAutoChallengeTrans() {
   if (player.currentChallenge.transcension != 0 && player.currentChallenge.transcension != scriptVariables.currentTransChallenge) {
     resetCheck('challenge');
   }
-  
+
   // move to next challenge if there is no current challenge, the current one is taking too long, or max completions are reached, and stop challenging after c5 is done
   if (player.currentChallenge.transcension === 0
       || player.transcendcounter > scriptSettings.challengeMaxTransDuration
@@ -1202,7 +1243,7 @@ function scriptAutoChallengeReinc() {
     scriptVariables.previousAutoSac = player.autoAntSacrifice;
     scriptSetAutoSac(false);
   }
-  
+
   // Abort current reinc challenge if it is not the one we are trying to run to prevent getting stuck
   if (player.currentChallenge.reincarnation !== 0 && player.currentChallenge.reincarnation !== scriptVariables.currentReincChallenge) {
     resetCheck('reincarnationchallenge');
@@ -1269,7 +1310,7 @@ function scriptLevelRune(rune, offerings, spendAll) {
     }
   }
 };
-	
+
 // Automatically levels up runes
 function scriptAutoRunes() {
   // If saving for respec, keep at least 800k
@@ -1373,16 +1414,16 @@ function scriptGetNewResearchTarget() {
 // Research as many techs as possible, from cheapest to most expensive
 function scriptAutoResearch () {
   if (scriptVariables.researchTarget === null || scriptResearchIsMaxed(scriptVariables.researchTarget)) scriptVariables.researchTarget = scriptGetNewResearchTarget();
-  
+
   let i = 0; // Counter to prevent infinite loops
   let temp = maxbuyresearch;
   let temp2 = player.autoResearchToggle;
-  while (scriptVariables.researchTarget > 0 && scriptVariables.researchTarget <= 155 &&  scriptResearchIsAffordable(scriptVariables.researchTarget) && i < 200) {
+  while (scriptVariables.researchTarget > 0 && scriptVariables.researchTarget <= 200 &&  scriptResearchIsAffordable(scriptVariables.researchTarget) && i < 200) {
     // Buy max
     maxbuyresearch = true;
     player.autoResearchToggle = false;
     buyResearch(scriptVariables.researchTarget, false);
-    
+
     // If the tech is now maxed, get a new target
     if (scriptResearchIsMaxed(scriptVariables.researchTarget)) scriptVariables.researchTarget = scriptGetNewResearchTarget();
     i++;
@@ -1417,9 +1458,9 @@ function scriptInitialize() {
   sLog(0, "Starting Script");
   resetCheck('challenge');
   resetCheck('reincarnationchallenge');
-  
+
   scriptHandleVersion();
-  
+
   scriptVariables.scriptInitialized = true;
 }
 
@@ -1428,14 +1469,16 @@ function scriptAutoAll () {
   // only start once the game is ready
   if (timeWarp) return;
 
-  // Only act every talismanInterval
+  // Only act every scriptInterval
   scriptVariables.scriptCounter += scriptInternalInverval;
   if (scriptVariables.scriptCounter < scriptSettings.scriptInterval) return;
   scriptVariables.scriptCounter = scriptVariables.scriptCounter % scriptSettings.scriptInterval;
 
+  scriptSettingsValidate();
+
   if (!(scriptVariables.scriptInitialized)) scriptInitialize();
   if (!(scriptVariables.displayInitialized)) scriptInitializeDisplay();
-  
+
   if (scriptSettings.autoTurnedOn) {
     scriptResetAfterManualAscension();
     if (scriptSettings.autoLog) scriptAutoLog();
