@@ -979,7 +979,7 @@ function scriptLevelRune(rune, offerings, spendAll) {
     toggleBuyAmount(1000, 'offering');
     redeemShards(rune);
   } else if (scriptSettings.runeFastSpendCheat) {
-    redeemShards(rune, true, null, offerings);
+    redeemShards(rune, true, offerings);
   } else {
     // Spends less than but as close as possible to the given amount of offerings on the given rune (1 to 5)
     let spent = 0;
