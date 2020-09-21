@@ -1098,13 +1098,15 @@ function scriptResearchIsAffordable(tech) {
 
 // This determines the current roomba target by filtering out all maxed techs, then taking the cheapest one that is left. If it returns 0 we are done, because that is the index of the null tech!
 function scriptGetNewResearchTarget() {
-  return scriptVariables.researchOrder.filter(tech => !scriptResearchIsMaxed(tech))[0];
+  return scriptVariables.researchOrder.filter(tech => !scriptResearchIsMaxed(tech) && isResearchUnlocked(tech))[0];
 }
 
 // Research as many techs as possible, from cheapest to most expensive
 function scriptAutoResearch () {
-  if (scriptVariables.researchTarget === null || scriptResearchIsMaxed(scriptVariables.researchTarget)) scriptVariables.researchTarget = scriptGetNewResearchTarget();
-  
+  if (scriptVariables.researchTarget === null || scriptResearchIsMaxed(scriptVariables.researchTarget)
+      || !isResearchUnlocked(scriptVariables.researchTarget))
+    scriptVariables.researchTarget = scriptGetNewResearchTarget();
+
   let i = 0; // Counter to prevent infinite loops
   let temp = maxbuyresearch;
   let temp2 = player.autoResearchToggle;
@@ -1115,7 +1117,8 @@ function scriptAutoResearch () {
     buyResearch(scriptVariables.researchTarget, false);
     
     // If the tech is now maxed, get a new target
-    if (scriptResearchIsMaxed(scriptVariables.researchTarget)) scriptVariables.researchTarget = scriptGetNewResearchTarget();
+    if (scriptResearchIsMaxed(scriptVariables.researchTarget) || !isResearchUnlocked(scriptVariables.researchTarget))
+      scriptVariables.researchTarget = scriptGetNewResearchTarget();
     i++;
   }
   maxbuyresearch = temp;
