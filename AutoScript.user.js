@@ -2,7 +2,7 @@
 // @name         Synergism Ascension Automator
 // @description  Automates Ascensions in the game Synergism, 1.011 testing version. May or may not work before ascension.
 // @namespace    Galefury
-// @version      1.11.6
+// @version      1.13.1
 // @downloadURL  https://raw.githubusercontent.com/Galefury/synergism-automation/master/AutoScript.user.js
 // @author       Galefury
 // @match        https://v1011testing.vercel.app/
@@ -38,6 +38,28 @@ It can run an ascension from start to finish if you have the row 1 mythos cube u
 
 /*
 Changelog
+1.13.1 02-Sep-20  Minor improvements
+- Game version: v2.0.0 TESTING! Update: September 1, 2020 11:17 PM PDT
+- Game version: autoresearch enabled up to research 200
+- Improved handling of Script Interval option. It can now only be set to multiples of 50 (was already only working in intervals of 50 before but could be set to any value in some browsers).
+- "Master Switch" Toggle renamed to "Enable Script". No change in functionality.
+
+1.13   26-Aug-20  Settings import/export
+- Game version: v2.0.0 TESTING! Update: August 25, 2020 11:29 PM PDT
+- Game version: autoresearch enabled up to research 155
+- Added settings import and export, as well as a button to reset them to the defaults. Export copies a settings string to the clipboard. A partial import string will only override the given settings.
+- The Script Interval setting can now be changed without a reload. The script now internally always works on a 50ms timer, but only triggers when the configured interval is reached.
+- Log Autoscroll is now a bit more zealous
+
+1.12   24-Aug-20  Log GUI
+- Game version: v1.011 TESTING! Update: August 22, 2020 7:08 PM PDT
+- Game version: Auto-Research enabled up to research 140
+- Added log to GUI Main tab
+- Logging settings moved to their own tab
+- No longer reincarnate independently of reincarnation timer settings if gained particles are significantly higher than stored ones
+- Internal: Added a saved script state that lasts ascross sessions. It's like the settings, but cant be changed via GUI
+- Internal: Added a variable for the script version to the state. For now it's just used for printing a log message when a version change is detected.
+
 1.11.6 21-Aug-20  Log level changes
 - Made some changes to logging levels, set it to 1 to only see ascension time and C/s. Periodic stats logging has moved from level 2 to level 3.
 
@@ -141,34 +163,28 @@ Initial version of the script. Game version: v1.011 TESTING! Update: July 22, 20
 
 /*
 TODO:
+- Add a setting to turn off automatically running challenges now that there is ingame automation for it
 - Log current speedup and maybe other game stats
 - Save some scriptVariables
-  * Add script version as a saved variable. Reset changed settings if needed and print a log message about changed or new settings and where they are.
   * Save last challenge attempt particles
-- Print a message on new version
 - Add a changelog button
-- Show an alert when changing a setting that will only apply on reload
-- Add settings for reincarnation times
 - Add config to let auto research skip some techs
 - Add autobuyers for some mythos stuff maybe (autobuy mythos buildings, autobuy mythos upgrades, autobuy mythos autobuyers)
-- Overview of the last few ascensions (maybe check autotrimps graph thingy to see if I can do something like that)
 - Add a help tab that explains some features and interactions
 - Auto-Sacrifice: spam sacrifice for first talisman upgrade fragments, adjust sacrifice timer (configurable, maybe depending on ant speed multi), force challenge pushes to happen at high ant timer (configurable, maybe in terms of percent of sacrifice timer)
-- Make script interval work without restart (use fast interval, but check if script interval is reached before doing stuff)
 - Tesseract upgrade autobuyer
 - Figure out something to improve challenge timer options. The wait after ascension and the wait after script start are weird.
-- Maybe an option to ascend into a specific ascension challenge
+- Make challenge timer options actually time between end and start, not time between start and start
 - Settings and dashboard GUI part 2
-  * Auto-adjust width
   * Scrollbar if too long
-  * Buttons to reset settings to default and maybe other stuff (start challenges manually, export/import settings)
+  * Maybe a button to start challenges manually
   * Build HUD for script stats
-  * Move log to a textfield
   * Option to hide GUI
   * Implement spaceafter
 */
 
-
+const scriptCurrentVersion = 3;
+const scriptInternalInverval = 50;
 
 let scriptSettings = {};
 let scriptDefineSettings = {};
@@ -188,8 +204,8 @@ class scriptSetting {
 }
 
 // Settings Definitions and default values
-tempSetting = new scriptSetting("autoTurnedOn", true, "Master Switch for the script.", "Master Switch", "main", "toggles", 1, true);
-tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds. Only refreshed on reload.", "Script Interval", "main", "toggles", 150);
+tempSetting = new scriptSetting("autoTurnedOn", true, "Master Switch for the script.", "Enable Script", "main", "toggles", 1, true);
+tempSetting = new scriptSetting("scriptInterval", 1000, "How often the script runs. Time between runs in milliseconds. Internally the interval is always 50ms, but the automation only triggers when the interval configured here is reached. So only multiples of 50 work here.", "Script Interval", "main", "toggles", 150);
 
 // Toggles for Script features
 tempSetting = new scriptSetting("autoLog", true, "Does some periodic logging, as long as logLevel is at least 3", "Auto Log", "main", "toggles", 10);
@@ -202,8 +218,13 @@ tempSetting = new scriptSetting("autoPartBuildings", false, "Automatically buy p
 tempSetting = new scriptSetting("autoResearch", false, "Automatically research techs from cheapest to most expensive. For when you don't have w1x10 yet or need faster research.", "Auto Research", "main", "toggles", 80, true);
 
 // Logging Settings
-tempSetting = new scriptSetting("logLevel", 10, "How much to log. 10 prints all messages, 0 logs only script start.", "Log Level", "main", "log", 50);
-tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data to console every X seconds. Logging level needs to be at least 3 for this to work.", "Log Interval", "main", "log", 60);
+tempSetting = new scriptSetting("logLevel", 10, "How much to log. 10 prints all messages, 0 logs only script start.", "Log Level", "logging", "log", 10);
+tempSetting = new scriptSetting("logInterval", 300, "Logs some general game data to console every X seconds. Logging level needs to be at least 3 for this to work.", "AutoLog Interval", "logging", "log", 20);
+tempSetting = new scriptSetting("logUpdateInterval", 1000, "How often the log display is updated (milliseconds)", "Log Display Update Interval", "logging", "log", 30);
+tempSetting = new scriptSetting("logLengthDisplay", 100, "How many log entries to display.", "Log Length (display)", "logging", "log", 40);
+tempSetting = new scriptSetting("logLengthSave", 100, "How many log entries to save. Probably setting this much higher than 100 would be bad!", "Log Length (save)", "logging", "log", 50);
+tempSetting = new scriptSetting("logToGui", true, "Log to GUI. Turning this off does not clear the existing log, set length to 0 to do that.", "Log to GUI", "logging", "log", 60);
+tempSetting = new scriptSetting("logToConsole", false, "Log to browser console.", "Log to browser console", "logging", "log", 70);
 
 // Game flow settings
 tempSetting = new scriptSetting("flowAscendAtC10Completions", 1, "Ascend only if C10 has been completed at least this many times", "C10 for ascend", "flow", "ascend", 10);
@@ -253,6 +274,27 @@ tempSetting = new scriptSetting("runeTech5x3Wait", 1, "Will save offerings if 5x
 tempSetting = new scriptSetting("runeTech4x16Wait", 1, "Same but for 4x16", "4x16 wait time", "runes", "runes", 60);
 tempSetting = new scriptSetting("runeTech4x17Wait", 1, "Same but for 4x17", "4x17 wait time", "runes", "runes", 70);
 
+// Blessings and Spirits settings
+
+
+
+
+// Script State. Same as variables, but saved
+let scriptState = {};
+let scriptDefineState = {};
+let tempState = {};
+// State infrastructure and definitions
+class scriptStateDefinition {
+  constructor(name, defaultValue) {
+    this.name = name;
+    this.defaultValue = defaultValue;
+    scriptDefineState[name] = this;
+  }
+}
+
+tempState = new scriptStateDefinition("version", 0);
+tempState = new scriptStateDefinition("log", []);
+tempState = new scriptStateDefinition("lastLogId", 0);
 
 // Variables, don't change manually
 let scriptVariables = {};
@@ -280,6 +322,11 @@ scriptVariables.settingsTabs = [];
 scriptVariables.researchTarget = null; //A
 scriptVariables.researchOrder = researchBaseCosts.map((val, ind)=>({value: val, index: ind})).sort((a, b)=>(a.value - b.value)).map(x => x.index); // Make a list of techs with costs, sort by cost, map back to a list of techs
 scriptVariables.lastAscensionCounter = player.ascensionCounter; //A
+scriptVariables.logCounter = 0;
+scriptVariables.scriptCounter = 0;
+
+// Script constants
+const scriptLogHeight = 215;
 
 // Settings infrastructure
 function scriptSettingsSave() {
@@ -312,21 +359,57 @@ function scriptSettingsClean() {
   });
 }
 
+// Updates the GUI from the settings
+function scriptUpdateGuiFromSettings() {
+  if (!scriptVariables.displayInitialized) return;
+
+  Object.keys(scriptSettings).forEach(function(key,index) {
+    if (typeof scriptSettings[key] === 'object') {
+      for (let i = 0; i < scriptSettings[key].length; i++) {
+        document.getElementById('scriptsetting-'+key+'-'+i)[(typeof scriptSettings[key][i] === "number" ? "value" : "checked")] = scriptSettings[key][i];
+      }
+    } else {
+      document.getElementById('scriptsetting-'+key)[(typeof scriptSettings[key] === "number" ? "value" : "checked")] = scriptSettings[key];
+    }
+  });
+}
+
+// Does some settings validation (and correction if needed)
+function scriptSettingsValidate() {
+  let updateNeeded = false;
+  if (scriptSettings.scriptInterval < scriptInternalInverval) {scriptSettings.scriptInterval = scriptInternalInverval; updateNeeded = true;}
+  if (scriptSettings.scriptInterval%scriptInternalInverval !== 0) {scriptSettings.scriptInterval -= scriptSettings.scriptInterval%scriptInternalInverval; updateNeeded = true;}
+
+  if (updateNeeded) scriptUpdateGuiFromSettings();
+}
+
 // Imports settings from a JSON String, sets any defined but not imported settings to default value
-function scriptSettingsImport (settings) {
-  if (settings != null) {
-    scriptSettings = JSON.parse(settings);
+function scriptSettingsImport(settings, setAll = true) {
+  if (setAll) {
+    if (settings != null) {
+      scriptSettings = JSON.parse(settings);
+    } else {
+      scriptSettings = {};
+    }
   } else {
-    scriptSettings = {};
+    // Only set the options in the import string
+    if (settings != null) {
+      let tempSettings = JSON.parse(settings);
+      Object.keys(tempSettings).forEach(function(key,index) {
+        scriptSettings[key] = tempSettings[key];
+      });
+    }
   }
+
   scriptSettingsFillDefaults();
   scriptSettingsClean();
   scriptSettingsSave();
+  scriptUpdateGuiFromSettings();
 }
 
 // Loads script settings from browser local storage
 function scriptSettingsLoad() {
-  scriptSettingsImport(window.localStorage.getItem('galefuryScriptSettings'));
+  scriptSettingsImport(window.localStorage.getItem('galefuryScriptSettings'), true);
 }
 
 // Removes script settings from browser local storage
@@ -341,8 +424,98 @@ function scriptSettingsResetToDefault() {
   scriptSettingsFillDefaults();
   scriptSettingsClean();
   scriptSettingsSave();
+  scriptUpdateGuiFromSettings();
+}
+if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptSettingsResetToDefault = scriptSettingsResetToDefault;}
+
+// Handler for settings export
+function scriptBtnHandlerExport() {
+  let textfield = document.getElementById('script-import');
+  textfield.value = JSON.stringify(scriptSettings);
+
+  textfield.select();
+  textfield.setSelectionRange(0, 99999);
+  document.execCommand("copy");
+}
+if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptBtnHandlerExport = scriptBtnHandlerExport;}
+
+// Handler for settings import
+function scriptBtnHandlerImport() {
+  try {
+    scriptSettingsImport(document.getElementById('script-import').value, false);
+    document.getElementById('script-import').value = "Success!";
+  } catch (err) {
+    document.getElementById('script-import').value = "Failure!";
+  }
+}
+if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptBtnHandlerImport = scriptBtnHandlerImport;}
+
+
+// Script State infrastructure
+// Saves the script state
+function scriptStateSave() {
+  window.localStorage.setItem('galefuryScriptState', JSON.stringify(scriptState));
 }
 
+// Sets defined state values that are not found in the scriptState object to default values
+function scriptStateFillDefaults() {
+  if (!scriptState) scriptState = {initial: "initial"};
+  Object.keys(scriptDefineState).forEach(function(key,index) {
+    if (!(scriptState.hasOwnProperty(key))) {
+      scriptState[key] = scriptDefineState[key].defaultValue;
+      console.log("Setting " + key + " set to default Value " + scriptDefineState[key].defaultValue);
+    }
+  });
+}
+
+// Removes any state values that are not in the state definition
+function scriptStateClean() {
+  Object.keys(scriptState).forEach(function(key,index) {
+    if (!(scriptDefineState.hasOwnProperty(key))) {
+      delete scriptState[key];
+      console.log("State " + key + " deleted");
+    }
+  });
+}
+
+// Loads script state from browser local storage
+function scriptStateLoad() {
+  scriptState = JSON.parse(window.localStorage.getItem('galefuryScriptState'));
+  scriptStateFillDefaults();
+  scriptStateClean();
+  scriptLogRebaseIds();
+  scriptStateSave();
+}
+
+// Removes script state from browser local storage
+function scriptStateRemoveStorage() {
+  window.localStorage.removeItem('galefuryScriptState');
+  console.log("Script state removed from local storage");
+}
+
+// Sets a state value and saves the state
+function scriptSetState(key, value) {
+  scriptState[key] = value;
+  scriptStateSave();
+}
+
+// ===== Info Functions =====
+// Function adapted from AlienC4's
+// Returns the average Cps and Tps over the last n ascensions
+function scriptAverageCpsTps(n) {
+  let sec = 0;
+  let cubes = 0;
+  let tess = 0;
+  for (let i = 0; i < n && i < player.history.ascend.length; i++) {
+      let elem = player.history.ascend[player.history.ascend.length - 1 - i];
+      sec += elem.seconds;
+      cubes += elem.wowCubes;
+      tess += elem.wowTesseracts;
+  }
+  return {cps: sec > 0 ? cubes/sec : 0, tps: sec > 0 ? tess/sec : 0, avgTime: sec / Math.min(n, player.history.ascend.length)}
+}
+
+// =====GUI functions =====
 // Creates a HTML Element from a String
 function scriptCreateElement(htmlString) {
   var div = document.createElement('div');
@@ -446,13 +619,13 @@ if (typeof unsafeWindow !== typeof undefined) {unsafeWindow.scriptChangeSettings
 // Creates an empty settings section with header button
 function scriptCreateSettingsSection(id, name, container, header) {
   // Create header button
-  let btn = scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" onclick = "scriptChangeSettingsTab(\''+id+'\')" value = "'+name+'">');
-  btn.addEventListener("click", scriptChangeSettingsTab(id));
+  let btn = scriptCreateElement('<input type="button" id = "'+id+'-headerbutton" class = "scriptsettings-header-button" value = "'+name+'">');
+  btn.addEventListener("click", function() {scriptChangeSettingsTab(id)});
   document.getElementById(header).append(btn);
-  
+
   // Create div
   document.getElementById(container).append(scriptCreateElement('<div id = "'+id+'" class = "script-section"></div>'));
-  
+
   // Append to tabs list
   scriptVariables.settingsTabs.push(id);
 }
@@ -465,14 +638,14 @@ function scriptAddOneSettingToSections(setting) {
     datatype = typeof scriptDefineSettings[setting].defaultValue[0];
     arrayCount = scriptDefineSettings[setting].defaultValue.length;
   }
-  
+
   let element;
   switch (datatype) {
     case "number": element = scriptCreateNumberField("scriptsetting-"+setting, setting, scriptDefineSettings[setting].label, scriptDefineSettings[setting].description, arrayCount); break;
     case "boolean": element = scriptCreateCheckbox("scriptsetting-"+setting, setting, scriptDefineSettings[setting].label, scriptDefineSettings[setting].description, arrayCount); break;
     default: console.error("Data Type "+datatype+" of setting "+setting+" is not compatible!"); return;
   }
-  
+
   let col = document.getElementById("script-settings-"+scriptDefineSettings[setting].section+"-"+scriptDefineSettings[setting].column);
   if (col) {
     col.append(element);
@@ -489,93 +662,99 @@ function scriptAddSettingsToSections() {
   }
 }
 
-function scriptInitializeDisplay() {
-  let settings_tab = document.getElementById('settings');
-  let body;
-  if (settings_tab) body = settings_tab.parentElement.parentElement;
-  if (body) {
-    body.append(scriptCreateElement('<div id="script-settings" style="color: white; position: absolute; top: 720px; margin-left: 20px; min-width: 1250px; max-width: 1400px;"></div>'));
-    
-    // Insert Stylesheet
-    let style = document.createElement('style');
-    style.innerHTML =
-      '.script-para {'+
-        'margin-block-start: 1px; margin-block-end: 1px;'+
-      '}'+
-      '.script-header {'+
-        'display:flex; flex-flow: row nowrap; justify-content: flex-start;'+
-      '}'+
-      '.scriptsettings-header-button {'+
-        'color: white; background-color: black; border: 1px solid purple; padding: 2px'+
-      '}'+
-      '.script-section {'+
-        'display:none; flex-flow: row nowrap; justify-content: space-between; width = 100%;'+
-      '}'+
-    	'.script-heading {' +
-    		'color: purple;' +
-        'background-color: #e5e5e5;'+
-      '}'+
-      '.scriptsettings-column {'+
-        'display:flex; flex-flow: column nowrap; justify-content: flex-start; padding: 2px;'+
-      '}'+
-      '.scriptsettings-column-heading {'+
-        'color: darkorchid'+
-      '}'+
-      '.scriptsettings-label {'+
-        'min-width: 100px; white-space:nowrap;'+
-      '}'+
-      '.scriptsettings-arraycontainer-checkbox {'+
-        'width: 40%; display: flex; justify-content: space-between;'+
-      '}'+
-      '.scriptsettings-checkbox {'+
-      '}'+
-      '.scriptsettings-arraycontainer-number {'+
-        'width: 60%; display: flex; justify-content: space-between;'+
-      '}'+
-      '.scriptsettings-numberfield {'+
-        'background-color: #202020; color: white; max-width: 100px'+
-      '}'+
-      '.scriptsettings-container {'+
-        'display:flex; justify-content: space-between;'+
-    	'}';
-    let ref = document.querySelector('script');
-    ref.parentNode.insertBefore(style, ref);
-    
-    // Insert script settings header
-    document.getElementById('script-settings').append(scriptCreateElement('<div id="script-settings-header" class="script-header"><p class = "script-heading script-para" style = "margin-right: 3px; padding-left: 2px; padding-right: 2px">Script Settings</p></div>'));
-    
-    // Insert script settings sections
-    scriptCreateSettingsSection("script-settings-main", "Main", "script-settings", "script-settings-header");
-    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-info', '40%', 'Info'));
-    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-log', '40%', 'Log'));
-    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-toggles', '20%', 'Toggles'));
-    scriptCreateSettingsSection("script-settings-flow", "Flow", "script-settings", "script-settings-header");
-    document.getElementById('script-settings-flow').append(scriptCreateElement('<div id = "script-settings-flow-co11" class=scriptsettings-column style = "width: 22%"></div>'));
-    document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-ascend', '100%', 'Ascension'));
-    document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-reinc', '100%', 'Reincarnation Timer'));
-    document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-challenges', '39%', 'Challenges'));
-    document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-blessings', '39%', 'Talismans, Blessings & Pushing'));
-    scriptCreateSettingsSection("script-settings-runes", "Runes & Talismans", "script-settings", "script-settings-header");
-    document.getElementById('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-runes', '40%', 'Runes'));
-    document.getElementById('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-talismans', '40%', 'Talismans'));
-    scriptCreateSettingsSection("script-settings-challenges", "Challenges", "script-settings", "script-settings-header");
-    document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-trans', '40%', 'Transcension Challenges'));
-    document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-reinc', '40%', 'Reincarnation Challenges'));
-    
-    scriptAddSettingsToSections();
-    scriptChangeSettingsTab("script-settings-main");
-    
-    scriptVariables.displayInitialized = true;
-  } else {
-    console.error("Could not create script GUI, body not found.")
+// General Helper functions
+// Time formatter
+function scriptCurrentTimeString() {
+  let date = new Date();
+  return String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0") + ":" + String(date.getSeconds()).padStart(2, "0");
+}
+
+// Class for log entries
+// Save state after using constructor!
+class scriptLogEntry {
+  constructor(level, text) {
+    this.level = level;
+    this.text = text;
+    this.date = scriptCurrentTimeString();
+    this.particles = format(player.reincarnationPoints.exponent, 0, false);
+    scriptState.lastLogId++;
+    this.id = scriptState.lastLogId;
   }
 }
 
-// General Helper functions
-function sLog(level, text) {
-  if (level <= scriptSettings.logLevel) {
-    let d = new Date();
-    console.log(d.toLocaleTimeString() + " " + Math.floor(player.reincarnationPoints.exponent) + "   " + text);
+// Rebases log entry IDs to start at 1
+// Save state after using!
+function scriptLogRebaseIds() {
+  for (let i = 0; i < scriptState.log.length; i++) {
+    scriptState.log[i].id = i+1;
+  }
+  scriptState.lastLogId = scriptState.log.length;
+}
+
+// Adds a log entry
+function scriptAddLogEntry(level, text) {
+  if (!(scriptState.log)) scriptState.log = [];
+
+  if (level <= scriptSettings.logLevel) scriptState.log.push(new scriptLogEntry(level, text));
+
+  while (scriptSettings.logLengthSave >= 0 && scriptState.log.length > scriptSettings.logLengthSave) scriptState.log.shift();
+  if (scriptState.log[scriptState.log.length - 1].id > Number.MAX_SAFE_INTEGER - 1000) scriptLogRebaseIds();
+  scriptStateSave();
+}
+
+// Makes the HTML element for a log Entry
+function scriptMakeLogEntryElement (entry) {
+  let element = scriptCreateElement('<div class=script-log-entry id = script-log-entry-'+entry.id+'></div>');
+  element.append(scriptCreateElement('<div class=script-log-date>'+entry.date+'</div>'));
+  element.append(scriptCreateElement('<div class=script-log-parts>'+entry.particles+'</div>'));
+  element.append(scriptCreateElement('<div class=script-log-text>'+entry.text+'</div>'));
+  return element;
+}
+
+// Updates the Log display
+function scriptUpdateLog(force = false, rebuild = false) {
+  // Only act every logInterval
+  scriptVariables.logCounter += scriptSettings.scriptInterval;
+  if (!force && scriptVariables.logCounter < scriptSettings.logUpdateInterval) return;
+  scriptVariables.logCounter = scriptVariables.logCounter % scriptSettings.logUpdateInterval;
+
+  let log = document.getElementById('script-log');
+  if (rebuild) {
+    // Clean out the log
+    let clearLog = log.cloneNode(false);
+    log.parentNode.replaceChild(clearLog, log);
+    log = clearLog;
+    // Re-add all entries
+    for (let i = 0; i < scriptState.log.length; i++) {
+      if (scriptState.log[i].level <= scriptSettings.logLevel) log.append(scriptMakeLogEntryElement(scriptState.log[i]));
+    }
+
+    // Scroll to bottom after rebuild
+    document.getElementById('script-log-container').scroll(0, document.getElementById('script-log').scrollHeight - scriptLogHeight);
+
+  } else {
+    let scrolledToBottom = document.getElementById('script-log-container').scrollTop >= document.getElementById('script-log').scrollHeight - scriptLogHeight - 20; // some Leeway
+    // don't clean out the log, only add new entries
+    for (let i = 0; i < scriptState.log.length; i++) {
+      if (scriptState.log[i].id > scriptVariables.logLastAddedId && scriptState.log[i].level <= scriptSettings.logLevel) log.append(scriptMakeLogEntryElement(scriptState.log[i]));
+    }
+
+    // remove first elements if too long
+    while (scriptSettings.logLengthDisplay >= 0 && log.childNodes.length > scriptSettings.logLengthDisplay) log.removeChild(log.firstChild);
+
+    // If log was at bottom, stay at bottom
+    if (scrolledToBottom) document.getElementById('script-log-container').scroll(0, document.getElementById('script-log').scrollHeight - scriptLogHeight);
+  }
+
+  scriptVariables.logLastAddedId = scriptState.log[scriptState.log.length - 1].id;
+}
+
+function sLog(level, text, force = false) {
+  if (force || scriptSettings.logToGui) scriptAddLogEntry(level, text);
+  if (force || scriptSettings.logToConsole) {
+    if (level <= scriptSettings.logLevel) {
+      console.log(scriptCurrentTimeString() + " " + format(player.reincarnationPoints.exponent, 0, false) + "   " + text);
+    }
   }
 }
 
@@ -610,6 +789,133 @@ function scriptAutoLog() {
   if (player.ascensionCounter > scriptVariables.lastLogCounter + scriptSettings.logInterval) {
     scriptVariables.lastLogCounter = player.ascensionCounter;
     scriptLogStuff();
+  }
+}
+
+function scriptInitializeDisplay() {
+  let settings_tab = document.getElementById('settings');
+  let body;
+  if (settings_tab) body = settings_tab.parentElement.parentElement;
+  if (body) {
+    body.append(scriptCreateElement('<div id="script-settings" style="color: white; position: absolute; top: 720px; margin-left: 20px; min-width: 1250px; max-width: 1400px;"></div>'));
+
+    // Insert Stylesheet
+    let style = document.createElement('style');
+    style.innerHTML =
+      '.script-para {'+
+        'margin-block-start: 1px; margin-block-end: 1px;'+
+      '}'+
+      '.script-header {'+
+        'display:flex; flex-flow: row nowrap; justify-content: flex-start;'+
+      '}'+
+      '.scriptsettings-header-button {'+
+        'color: white; background-color: black; border: 1px solid purple; padding: 2px'+
+      '}'+
+      '.scriptsettings-menu-button {'+
+        'padding: 2px'+
+      '}'+
+      '.script-section {'+
+        'display:none; flex-flow: row nowrap; justify-content: space-between; width = 100%;'+
+      '}'+
+    	'.script-heading {' +
+    		'color: purple;' +
+        'background-color: #e5e5e5;'+
+      '}'+
+      '.scriptsettings-column {'+
+        'display:flex; flex-flow: column nowrap; justify-content: flex-start; padding: 2px;'+
+      '}'+
+      '.scriptsettings-column-heading {'+
+        'color: darkorchid'+
+      '}'+
+      '.scriptsettings-label {'+
+        'min-width: 100px; white-space:nowrap;'+
+      '}'+
+      '.scriptsettings-arraycontainer-checkbox {'+
+        'width: 40%; display: flex; justify-content: space-between;'+
+      '}'+
+      '.scriptsettings-checkbox {'+
+      '}'+
+      '.scriptsettings-arraycontainer-number {'+
+        'width: 60%; display: flex; justify-content: space-between;'+
+      '}'+
+      '.scriptsettings-numberfield {'+
+        'background-color: #202020; color: white; max-width: 100px'+
+      '}'+
+      '.scriptsettings-rowcontainer {'+
+        'width: 100%; display: flex; justify-content: space-between;'+
+      '}'+
+      '.script-log-container {'+
+        'display:block; overflow: hidden scroll;'+
+      '}'+
+      '.script-log {'+
+        'display:flex; flex-flow: column nowrap; justify-content: flex-end; padding: 1px; background-color: #202020; color: white;'+
+      '}'+
+      '.script-log-entry {'+
+        'display:flex; flex-flow: row nowrap; justify-content: flex-start; width: 100%;'+
+      '}'+
+      '.script-log-date {'+
+        'width: 65px; white-space: nowrap;'+
+      '}'+
+      '.script-log-parts {'+
+        'width: 60px; white-space: nowrap;'+
+      '}'+
+      '.script-log-text {'+
+        'white-space: nowrap;'+
+      '}'+
+      '.scriptsettings-container {'+
+        'display:flex; justify-content: space-between;'+
+    	'}';
+    let ref = document.querySelector('script');
+    ref.parentNode.insertBefore(style, ref);
+
+    // Insert script settings header
+    document.getElementById('script-settings').append(scriptCreateElement('<div id="script-settings-header" class="script-header"><p class = "script-heading script-para" style = "margin-right: 3px; padding-left: 2px; padding-right: 2px">Script Settings</p></div>'));
+
+    // GUI Layout
+    scriptCreateSettingsSection("script-settings-main", "Main", "script-settings", "script-settings-header");
+    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-info', '20%', 'Info'));
+    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-log', '63%', 'Log'));
+    document.getElementById('script-settings-main-log').append(scriptCreateElement('<div id = "script-log-container" class=script-log-container style = "width: 100%; height: '+scriptLogHeight+'px;"></div>'));
+    document.getElementById('script-log-container').append(scriptCreateElement('<div id = "script-log" class=script-log style = "width: 100%"></div>'));
+    document.getElementById('script-settings-main').append(scriptCreateSettingsColumn('script-settings-main-toggles', '17%', 'Toggles'));
+    scriptCreateSettingsSection("script-settings-flow", "Flow", "script-settings", "script-settings-header");
+    document.getElementById('script-settings-flow').append(scriptCreateElement('<div id = "script-settings-flow-co11" class=scriptsettings-column style = "width: 22%"></div>'));
+    document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-ascend', '100%', 'Ascension'));
+    document.getElementById('script-settings-flow-co11').append(scriptCreateSettingsColumn('script-settings-flow-reinc', '100%', 'Reincarnation Timer'));
+    document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-challenges', '39%', 'Challenges'));
+    document.getElementById('script-settings-flow').append(scriptCreateSettingsColumn('script-settings-flow-blessings', '39%', 'Talismans, Blessings & Pushing'));
+    scriptCreateSettingsSection("script-settings-runes", "Runes & Talismans", "script-settings", "script-settings-header");
+    document.getElementById('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-runes', '40%', 'Runes'));
+    document.getElementById('script-settings-runes').append(scriptCreateSettingsColumn('script-settings-runes-talismans', '40%', 'Talismans'));
+    scriptCreateSettingsSection("script-settings-challenges", "Challenges", "script-settings", "script-settings-header");
+    document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-trans', '40%', 'Transcension Challenges'));
+    document.getElementById('script-settings-challenges').append(scriptCreateSettingsColumn('script-settings-challenges-reinc', '40%', 'Reincarnation Challenges'));
+    scriptCreateSettingsSection("script-settings-logging", "Logging & Import", "script-settings", "script-settings-header");
+    document.getElementById('script-settings-logging').append(scriptCreateSettingsColumn('script-settings-logging-log', '25%', 'Logging'));
+    document.getElementById('script-settings-logging').append(scriptCreateSettingsColumn('script-settings-logging-import', '30%', 'Settings Import & Export'));
+    document.getElementById('script-settings-logging-import').append(scriptCreateElement('<input id = "script-import" type="text" style = "width: 100%;">'));
+    document.getElementById('script-settings-logging-import').append(scriptCreateElement('<div id = "script-settings-logging-import-buttons" class=scriptsettings-rowcontainer></div>'));
+    document.getElementById('script-settings-logging-import-buttons').append(scriptCreateElement('<input type="button" id = "script-button-export" class = "scriptsettings-menu-button" value = "Export Script Settings">'));
+    document.getElementById('script-settings-logging-import-buttons').append(scriptCreateElement('<input type="button" id = "script-button-import" class = "scriptsettings-menu-button" value = "Import Script Settings">'));
+    document.getElementById('script-settings-logging-import-buttons').append(scriptCreateElement('<input type="button" id = "script-button-defaults" class = "scriptsettings-menu-button" value = "Reset Script Settings">'));
+
+    // Button handlers
+    document.getElementById('script-button-export').addEventListener("click", scriptBtnHandlerExport);
+    document.getElementById('script-button-import').addEventListener("click", scriptBtnHandlerImport);
+    document.getElementById('script-button-defaults').addEventListener("click", scriptSettingsResetToDefault);
+
+    scriptAddSettingsToSections();
+    scriptChangeSettingsTab("script-settings-main");
+    
+    // Specific fields handling
+    document.getElementById('scriptsetting-scriptInterval').min = scriptInternalInverval;
+    document.getElementById('scriptsetting-scriptInterval').step = scriptInternalInverval;
+
+    scriptUpdateLog(true, true); // Fill log window with restored entries
+
+    scriptVariables.displayInitialized = true;
+  } else {
+    console.error("Could not create script GUI, body not found.")
   }
 }
 
@@ -698,7 +1004,7 @@ function scriptAutoGameFlow () {
     // Exit any running challenges
     if (player.currentChallenge.transcension != 0) resetCheck('challenge');
     if (player.currentChallenge.reincarnation != 0) resetCheck('reincarnationchallenge');
-    
+
     // Respec to 2 4 5
     if (player.runeshards > 400000) {
       mirrorTalismanStats = [null, -1, 1, -1, 1, 1];
@@ -819,10 +1125,14 @@ function scriptAutoGameFlow () {
   }
 
   // Handle Reincarnation
-  if (scriptNoCurrentAction() && (player.reincarnationcounter > scriptVariables.targetReincTime || ((player.reincarnationPoints.exponent + 100)*1.05 < reincarnationPointGain.exponent && player.reincarnationcounter > 60))) {
+  if (scriptNoCurrentAction() && player.reincarnationcounter > scriptVariables.targetReincTime) {
     let tempTimer = player.reincarnationcounter;
     resetCheck('reincarnate');
-    sLog(8, "Reincarnated (" + tempTimer + ")");
+    if (player.reincarnationcounter < tempTimer) {
+      sLog(8, "Reincarnated (" + format(tempTimer, 2, true) + ")");
+    } else {
+      sLog(8, "Failed to reincarnate");
+    }
   }
 }
 
@@ -833,7 +1143,7 @@ function scriptAutoTalismans () {
   // Only act every talismanInterval
   scriptVariables.talismanCounter += scriptSettings.scriptInterval;
   if (scriptVariables.talismanCounter < scriptSettings.talismanInterval) return;
-  scriptVariables.talismanCounter = 0;
+  scriptVariables.talismanCounter = scriptVariables.talismanCounter % scriptSettings.talismanInterval;
 
   let unlockAchievements = [null, 119, 126, 133, 140, 147, null, null];
 
@@ -884,7 +1194,7 @@ function scriptAutoChallengeTrans() {
   if (player.currentChallenge.transcension != 0 && player.currentChallenge.transcension != scriptVariables.currentTransChallenge) {
     resetCheck('challenge');
   }
-  
+
   // move to next challenge if there is no current challenge, the current one is taking too long, or max completions are reached, and stop challenging after c5 is done
   if (player.currentChallenge.transcension === 0
       || player.transcendcounter > scriptSettings.challengeMaxTransDuration
@@ -933,7 +1243,7 @@ function scriptAutoChallengeReinc() {
     scriptVariables.previousAutoSac = player.autoAntSacrifice;
     scriptSetAutoSac(false);
   }
-  
+
   // Abort current reinc challenge if it is not the one we are trying to run to prevent getting stuck
   if (player.currentChallenge.reincarnation !== 0 && player.currentChallenge.reincarnation !== scriptVariables.currentReincChallenge) {
     resetCheck('reincarnationchallenge');
@@ -1000,7 +1310,7 @@ function scriptLevelRune(rune, offerings, spendAll) {
     }
   }
 };
-	
+
 // Automatically levels up runes
 function scriptAutoRunes() {
   // If saving for respec, keep at least 800k
@@ -1106,16 +1416,15 @@ function scriptAutoResearch () {
   if (scriptVariables.researchTarget === null || scriptResearchIsMaxed(scriptVariables.researchTarget)
       || !isResearchUnlocked(scriptVariables.researchTarget))
     scriptVariables.researchTarget = scriptGetNewResearchTarget();
-
   let i = 0; // Counter to prevent infinite loops
   let temp = maxbuyresearch;
   let temp2 = player.autoResearchToggle;
-  while (scriptVariables.researchTarget > 0 && scriptVariables.researchTarget <= 125 &&  scriptResearchIsAffordable(scriptVariables.researchTarget) && i < 200) {
+  while (scriptVariables.researchTarget > 0 && scriptVariables.researchTarget <= 200 &&  scriptResearchIsAffordable(scriptVariables.researchTarget) && i < 200) {
     // Buy max
     maxbuyresearch = true;
     player.autoResearchToggle = false;
     buyResearch(scriptVariables.researchTarget, false);
-    
+
     // If the tech is now maxed, get a new target
     if (scriptResearchIsMaxed(scriptVariables.researchTarget) || !isResearchUnlocked(scriptVariables.researchTarget))
       scriptVariables.researchTarget = scriptGetNewResearchTarget();
@@ -1135,12 +1444,25 @@ function scriptResetAfterManualAscension() {
 }
 
 
+// Does any stuff that needs to be done due to a script version change
+function scriptHandleVersion() {
+  if (scriptState.version === 0) {
+    sLog(0, "Welcome to Galefury's Synergism Ascension Automator!");
+    scriptSetState('version', scriptCurrentVersion);
+  }
+  if (scriptState.version < scriptCurrentVersion) {
+    sLog(0, "You are using a new script version!");
+  }
+  scriptSetState('version', scriptCurrentVersion);
+}
 
 function scriptInitialize() {
   sLog(0, "Starting Script");
   resetCheck('challenge');
   resetCheck('reincarnationchallenge');
-  
+
+  scriptHandleVersion();
+
   scriptVariables.scriptInitialized = true;
 }
 
@@ -1149,9 +1471,16 @@ function scriptAutoAll () {
   // only start once the game is ready
   if (timeWarp) return;
 
+  // Only act every scriptInterval
+  scriptVariables.scriptCounter += scriptInternalInverval;
+  if (scriptVariables.scriptCounter < scriptSettings.scriptInterval) return;
+  scriptVariables.scriptCounter = scriptVariables.scriptCounter % scriptSettings.scriptInterval;
+
+  scriptSettingsValidate();
+
   if (!(scriptVariables.scriptInitialized)) scriptInitialize();
   if (!(scriptVariables.displayInitialized)) scriptInitializeDisplay();
-  
+
   if (scriptSettings.autoTurnedOn) {
     scriptResetAfterManualAscension();
     if (scriptSettings.autoLog) scriptAutoLog();
@@ -1164,9 +1493,11 @@ function scriptAutoAll () {
     if (scriptSettings.autoOpenCubes) scriptAutoOpenCubes();
     if (scriptSettings.autoPartBuildings) scriptAutoPartBuildings();
     if (scriptSettings.autoResearch) scriptAutoResearch();
+    scriptUpdateLog(false, false);
   }
 }
 
 scriptSettingsLoad();
+scriptStateLoad();
 
-window.setInterval(scriptAutoAll, scriptSettings.scriptInterval);
+window.setInterval(scriptAutoAll, scriptInternalInverval);
